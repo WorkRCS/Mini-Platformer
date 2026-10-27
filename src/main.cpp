@@ -118,9 +118,17 @@ bool Pressed(Rectangle r) {
            (touchPressed && PointerInside(r));
 }
 
+bool TouchHeld(Rectangle r) {
+    const int count = GetTouchPointCount();
+    for (int i = 0; i < count; ++i) {
+        if (CheckCollisionPointRec(ToVirtual(GetTouchPosition(i)), r)) return true;
+    }
+    return false;
+}
+
 bool Held(Rectangle r) {
     return (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && PointerInside(r)) ||
-           (touchDown && PointerInside(r));
+           TouchHeld(r);
 }
 
 bool Button(Rectangle r, const char* label, bool active = true) {
@@ -628,7 +636,10 @@ void DrawTitle() {
 }
 
 void DrawControlsScreen() {
-    DrawTitle();
+    DrawBackground(0.0f);
+    DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
+                           Color{ 10, 17, 38, 165 }, Color{ 13, 28, 48, 110 });
+    TextCentered("TINY TRAILS", 76, 38, WHITE_90);
     DrawRectangleRounded({ 225, 150, 510, 290 }, 0.06f, 8, Color{ 12, 23, 43, 248 });
     TextCentered("HOW TO PLAY", 174, 28, MINT);
     DrawText("MOVE", 275, 226, 17, GOLD);
