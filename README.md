@@ -42,6 +42,19 @@ If you have already cloned the repository, skip \`git clone\` and \`cd Mini-Plat
 
 You can also run \`bash build-msys2.sh\` from the project root after installing the dependencies.
 
+
+## Fix VS Code `raylib.h` include errors
+
+The `.vscode/c_cpp_properties.json` file configures IntelliSense for the standard MSYS2 path `C:/msys64/ucrt64/include`. Open the **repository root folder** in VS Code (not only `src/main.cpp`), then run **Developer: Reload Window** from the Command Palette.
+
+If MSYS2 is installed somewhere other than `C:\\msys64`, update `compilerPath` and `includePath` in `.vscode/c_cpp_properties.json` to that installation. The red underline is an IntelliSense configuration warning; the CMake build uses raylib's package configuration.
+
+## Troubleshooting gameplay feedback
+
+- Regular platforms are solid surfaces and do not damage the player.
+- Red spikes and red enemies cause damage on contact. A hit should now show the red damage banner, a visible hit ring, particles, knockback, and a short respawn pause.
+- If you already cloned this project, run `git pull origin main` before rebuilding so you get the latest graphics and collision feedback.
+
 ## Android
 
 The same game source includes touch controls and raylib gamepad input. Android Studio project files are in the \`android/\` folder. See [android/README.md](android/README.md) for the SDK/NDK requirements and APK build steps.
