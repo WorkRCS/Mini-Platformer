@@ -25,7 +25,7 @@ const Color C_GOLD      = { 255, 211, 92, 255 };
 const Color C_CORAL     = { 255, 112, 125, 255 };
 const Color C_WHITE_90  = { 242, 247, 255, 235 };
 
-enum class Screen { Menu, Controls, Playing, Paused, GameOver, Victory };
+enum class Screen { Menu, Controls, Settings, Playing, Paused, GameOver, Victory };
 
 struct Platform {
     Rectangle box;
@@ -124,6 +124,17 @@ float impactTimer = 0.0f;
 Vector2 impactScreenPos { VIEW_W * 0.5f, VIEW_H * 0.5f };
 bool pendingGameOver = false;
 bool exitRequested = false;
+
+// Process-local only: never saved to disk or shared with other users.
+bool cheatEnabled = false;
+std::string cheatPinEntry;
+std::string settingsMessage = "Enter PIN 74330 to enable safe exploration.";
+bool settingsPinError = false;
+int pendingHitObstacleType = -1;
+Rectangle pendingHitObstacleBox {};
+int lastHitObstacleType = -1;
+Rectangle lastHitObstacleBox {};
+Vector2 lastSafePlayerPosition {70.0f, 422.0f};
 
 const char* DifficultyName() {
     if (difficulty == 0) return "EASY";
@@ -422,15 +433,55 @@ const char* OptionalAssetPath(const char* fileName) {
 #endif
 }
 
+void RemoveOpaqueBlackBorder(Image* image) {
+    if (image == nullptr || image->data == nullptr || image->width < 1 || image->height < 1) return;
+    ImageFormat(image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    auto* pixels = static_cast<unsigned char*>(image->data);
+    const int w = image->width, h = image->height, total = w * h;
+    std::vector<unsigned char> visited(static_cast<size_t>(total), 0);
+    std::vector<int> queue;
+    queue.reserve(static_cast<size_t>(total / 3));
+
+    auto visit = [&](int x, int y) {
+        const int idx = y * w + x;
+        if (visited[static_cast<size_t>(idx)]) return;
+        visited[static_cast<size_t>(idx)] = 1;
+        const int p = idx * 4;
+        if (pixels[p + 3] == 0) return; // already transparent
+        // Clear only border-connected near-black matte, preserving dark interior outlines.
+        if (pixels[p] <= 35 && pixels[p + 1] <= 35 && pixels[p + 2] <= 35) {
+            pixels[p + 3] = 0;
+            queue.push_back(idx);
+        }
+    };
+    for (int x = 0; x < w; ++x) { visit(x, 0); visit(x, h - 1); }
+    for (int y = 0; y < h; ++y) { visit(0, y); visit(w - 1, y); }
+    for (size_t i = 0; i < queue.size(); ++i) {
+        const int idx = queue[i], x = idx % w, y = idx / w;
+        if (x > 0) visit(x - 1, y);
+        if (x + 1 < w) visit(x + 1, y);
+        if (y > 0) visit(x, y - 1);
+        if (y + 1 < h) visit(x, y + 1);
+    }
+}
+
 Texture2D LoadOptionalTexture(const char* fileName) {
-    const char* path=OptionalAssetPath(fileName);
-    if(path==nullptr) {
-        TraceLog(LOG_INFO,"ASSET: Optional %s not supplied; using built-in art",fileName);
+    const char* path = OptionalAssetPath(fileName);
+    if (path == nullptr) {
+        TraceLog(LOG_INFO, "ASSET: Optional %s not supplied; using built-in art", fileName);
         return Texture2D{};
     }
-    Texture2D texture=LoadTexture(path);
-    if(texture.id!=0) SetTextureFilter(texture,TEXTURE_FILTER_BILINEAR);
-    else TraceLog(LOG_WARNING,"ASSET: Could not load optional image %s",fileName);
+    Image image = LoadImage(path);
+    if (image.data == nullptr) {
+        TraceLog(LOG_WARNING, "ASSET: Could not load optional image %s", fileName);
+        return Texture2D{};
+    }
+    // Keep PNG alpha intact; remove only any opaque near-black background touching its edges.
+    RemoveOpaqueBlackBorder(&image);
+    Texture2D texture = LoadTextureFromImage(image);
+    UnloadImage(image);
+    if (texture.id != 0) SetTextureFilter(texture, TEXTURE_FILTER_BILINEAR);
+    else TraceLog(LOG_WARNING, "ASSET: Could not create texture for %s", fileName);
     return texture;
 }
 
@@ -688,6 +739,7 @@ void LoadLevel(int which) {
     player.pos = { 70.0f, 422.0f };
     player.vel = { 0.0f, 0.0f };
     player.grounded = false;
+    lastSafePlayerPosition = player.pos;
     cameraX = 0.0f;
     hurtFlash = 0.0f;
     damageNoticeTimer = 0.0f;
@@ -714,8 +766,13 @@ Rectangle PlayerRect() {
 }
 
 void TakeHit() {
-    if (hurtFlash > 0.0f || respawnTimer > 0.0f) return;
-
+    if (cheatEnabled || hurtFlash > 0.0f || respawnTimer > 0.0f) {
+        pendingHitObstacleType = -1;
+        return;
+    }
+    lastHitObstacleType = pendingHitObstacleType;
+    lastHitObstacleBox = pendingHitObstacleBox;
+    pendingHitObstacleType = -1;
     --player.lives;
     hurtFlash = 1.65f;
     damageNoticeTimer = 1.85f;
@@ -906,7 +963,9 @@ void UpdateGame(float dt) {
             std::max(1.0f, s.box.width - 2.0f * insetX),
             std::max(1.0f, s.box.height - insetY)
         };
-        if (CheckCollisionRecs(PlayerRect(), visibleHitbox)) {
+        if (CheckCollisionRecs(PlayerRect(), visibleHitbox) && !cheatEnabled) {
+            pendingHitObstacleType = s.type;
+            pendingHitObstacleBox = s.box;
             TakeHit();
             return;
         }
@@ -933,18 +992,30 @@ void UpdateGame(float dt) {
                 scoreNoticePos = { e.box.x + e.box.width * 0.5f, e.box.y };
                 scoreNoticeTimer = 0.78f;
                 PlayFx(sfxStomp);
-            } else {
+            } else if (!cheatEnabled) {
+                pendingHitObstacleType = -1;
                 TakeHit();
                 return;
             }
         }
     }
 
+    if (player.grounded) lastSafePlayerPosition = player.pos;
+
     if (player.pos.y > VIEW_H + 110.0f && screen == Screen::Playing) {
-        // Bring the fall impact into view so the life loss is never invisible off-screen.
-        player.pos.y = VIEW_H - PLAYER_H - 18.0f;
-        TakeHit();
-        return;
+        if (cheatEnabled) {
+            // Recover to the last safe ledge and continue exploring without losing a life.
+            player.pos = lastSafePlayerPosition;
+            player.vel = {0.0f, 0.0f};
+            player.grounded = false;
+            cameraX = std::clamp(player.pos.x - VIEW_W * 0.36f, 0.0f, WORLD_W - VIEW_W);
+            SpawnFootDust({player.pos.x + PLAYER_W * 0.5f, player.pos.y + PLAYER_H}, 10);
+        } else {
+            player.pos.y = VIEW_H - PLAYER_H - 18.0f;
+            pendingHitObstacleType = -1;
+            TakeHit();
+            return;
+        }
     }
 
     const float targetCamera = std::clamp(player.pos.x - VIEW_W * 0.36f,
