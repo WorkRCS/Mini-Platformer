@@ -384,8 +384,20 @@ void LoadGameAssets() {
     }
 
     characterAtlas = LoadTexture(CharacterAssetPath());
-    if (characterAtlas.id != 0) SetTextureFilter(characterAtlas, TEXTURE_FILTER_BILINEAR);
-    else TraceLog(LOG_WARNING, "ASSET: Could not load character_atlas.png; using fallback character");
+    if (characterAtlas.id != 0) {
+        SetTextureFilter(characterAtlas, TEXTURE_FILTER_BILINEAR);
+        if (characterAtlas.width % 5 != 0 || characterAtlas.height % 4 != 0) {
+            TraceLog(LOG_WARNING,
+                     "ASSET: character atlas is %dx%d; expected a 5-column x 4-row sheet",
+                     characterAtlas.width, characterAtlas.height);
+        } else {
+            TraceLog(LOG_INFO, "ASSET: character atlas %dx%d; each frame %dx%d",
+                     characterAtlas.width, characterAtlas.height,
+                     characterAtlas.width / 5, characterAtlas.height / 4);
+        }
+    } else {
+        TraceLog(LOG_WARNING, "ASSET: Could not load character_atlas.png; using fallback character");
+    }
 }
 
 void UpdateBackgroundAnimation(float dt) {
@@ -1037,75 +1049,89 @@ void DrawPlayerFallback() {
 }
 
 void DrawPlayer() {
-    if (characterAtlas.id == 0) {
+    // Validate the grid and derive the real frame size from the image rather than
+    // assuming the PNG was exported at 320x320. This prevents clipping on 2x/4x exports.
+    if (characterAtlas.id == 0 || characterAtlas.width < 5 || characterAtlas.height < 4 ||
+        characterAtlas.width % 5 != 0 || characterAtlas.height % 4 != 0) {
         DrawPlayerFallback();
         return;
     }
 
+    constexpr int ATLAS_COLUMNS = 5;
+    constexpr int ATLAS_ROWS = 4;
+    const int cellW = characterAtlas.width / ATLAS_COLUMNS;
+    const int cellH = characterAtlas.height / ATLAS_ROWS;
     const bool damaged = hurtFlash > 0.0f || respawnTimer > 0.0f;
-    int row = 0;
-    int frame = 0;
     const float horizontalSpeed = std::fabs(player.vel.x);
 
+    int row = 0;
+    int frame = 0;
     if (damaged) {
         row = 3;
         frame = player.vel.y < 0.0f ? 2 : 3;
     } else if (!player.grounded) {
         row = 3;
-        if (player.vel.y < -90.0f) frame = 2;       // rising jump, arms up
-        else if (player.vel.y > 100.0f) frame = 3;  // falling / air pose
-        else frame = 1;                             // crouch at the jump apex
+        if (player.vel.y < -90.0f) frame = 2;
+        else if (player.vel.y > 100.0f) frame = 3;
+        else frame = 1;
     } else if (landingTimer > 0.0f) {
         row = 3;
-        frame = 4;                                 // landing pose
+        frame = 4;
     } else if (horizontalSpeed > 40.0f) {
-        row = horizontalSpeed < 282.0f ? 1 : 2;    // walk or run strip
-        const float rate = row == 1 ? 8.0f : 12.0f;
-        frame = static_cast<int>(gameClock * rate) % 5;
+        row = horizontalSpeed < 282.0f ? 1 : 2;
+        const float rate = row == 1 ? 8.0f : 10.0f;
+        frame = static_cast<int>(gameClock * rate) % ATLAS_COLUMNS;
     } else {
+        // Use one stable idle frame; the old idle-strip cycling made the character
+        // shimmer while standing. Running, walking and jumping remain animated.
         row = 0;
-        frame = static_cast<int>(gameClock * 3.0f) % 5;
+        frame = 0;
     }
 
-    const Rectangle sourceBase = {
-        static_cast<float>(frame * 64),
-        static_cast<float>(row * 80),
-        64.0f, 80.0f
+    Rectangle source = {
+        static_cast<float>(frame * cellW),
+        static_cast<float>(row * cellH),
+        static_cast<float>(cellW),
+        static_cast<float>(cellH)
     };
-    Rectangle source = sourceBase;
     if (playerFacing < 0.0f) {
         source.x += source.width;
         source.width = -source.width;
     }
 
-    constexpr float spriteW = 76.0f;
-    constexpr float spriteH = 100.0f;
-    const float screenX = player.pos.x - cameraX;
+    // A fixed world-space height for every pose plus foot anchoring prevents the
+    // character from seeming to change size or float as animation frames change.
+    constexpr float spriteH = 88.0f;
+    const float spriteW = spriteH * static_cast<float>(cellW) / static_cast<float>(cellH);
+    const float screenX = player.pos.x + PLAYER_W * 0.5f - spriteW * 0.5f - cameraX;
     const float bottom = player.pos.y + PLAYER_H;
+    const float transparentFootInset = spriteH * 0.04f;
+    const float idleBob = (!damaged && player.grounded && horizontalSpeed <= 40.0f)
+        ? std::sin(gameClock * 2.2f) * 1.2f : 0.0f;
     const Rectangle dest = {
-        screenX + (PLAYER_W - spriteW) * 0.5f,
-        bottom - spriteH,
-        spriteW, spriteH
+        screenX,
+        bottom - spriteH + transparentFootInset + idleBob,
+        spriteW,
+        spriteH
     };
 
-    DrawEllipse(static_cast<int>(screenX + PLAYER_W * 0.5f),
-                static_cast<int>(bottom + 2.0f), 24.0f, 6.0f,
-                Color{ 8, 15, 27, 130 });
+    DrawEllipse(static_cast<int>(player.pos.x + PLAYER_W * 0.5f - cameraX),
+                static_cast<int>(bottom + 2.0f), spriteW * 0.31f, 5.0f,
+                Color{ 8, 15, 27, 125 });
 
-    const Color tint = damaged ? Color{ 255, 160, 170, 255 } : WHITE;
+    const Color tint = damaged ? Color{ 255, 173, 180, 255 } : WHITE;
     DrawTexturePro(characterAtlas, source, dest, { 0.0f, 0.0f }, 0.0f, tint);
 
-    // Never blink the character out of view. Add an explicit hit marker instead.
     if (damaged) {
-        const float ring = 32.0f + std::sin(gameClock * 36.0f) * 2.5f;
-        DrawCircleLines(static_cast<int>(screenX + PLAYER_W * 0.5f),
-                        static_cast<int>(bottom - spriteH * 0.47f),
+        const float ring = 29.0f + std::sin(gameClock * 24.0f) * 1.5f;
+        DrawCircleLines(static_cast<int>(player.pos.x + PLAYER_W * 0.5f - cameraX),
+                        static_cast<int>(bottom - spriteH * 0.46f),
                         ring, Color{ 255, 81, 111, 230 });
-        DrawUIText("HIT", static_cast<int>(screenX - 1.0f),
-                 static_cast<int>(bottom - spriteH - 8.0f), 14, Color{ 255, 225, 224, 255 });
+        DrawUIText("HIT", static_cast<int>(screenX + spriteW * 0.31f),
+                   static_cast<int>(bottom - spriteH - 7.0f), 14,
+                   Color{ 255, 225, 224, 255 });
     }
 }
-
 void DrawGoal() {
     const float x = WORLD_W - 105.0f - cameraX;
     DrawRectangle(static_cast<int>(x), 360, 5, 90, Color{ 234, 244, 255, 240 });
@@ -1255,10 +1281,16 @@ void DrawMenuHero(float x, float y) {
                     40.0f + std::sin(gameClock * 2.0f) * 2.0f,
                     Color{ 117, 255, 204, 85 });
 
-    if (characterAtlas.id != 0) {
-        const int idleFrame = static_cast<int>(gameClock * 3.0f) % 5;
-        const Rectangle source = { static_cast<float>(idleFrame * 64), 0.0f, 64.0f, 80.0f };
-        const Rectangle dest = { x - 40.0f, y - 15.0f + bob, 80.0f, 100.0f };
+    if (characterAtlas.id != 0 && characterAtlas.width % 5 == 0 &&
+        characterAtlas.height % 4 == 0 && characterAtlas.width >= 5 &&
+        characterAtlas.height >= 4) {
+        const float cellW = static_cast<float>(characterAtlas.width / 5);
+        const float cellH = static_cast<float>(characterAtlas.height / 4);
+        const Rectangle source = { 0.0f, 0.0f, cellW, cellH };
+        const float displayH = 88.0f;
+        const float displayW = displayH * cellW / cellH;
+        const Rectangle dest = { x - displayW * 0.5f, y - 2.0f + bob,
+                                 displayW, displayH };
         DrawTexturePro(characterAtlas, source, dest, { 0.0f, 0.0f }, 0.0f, WHITE);
     } else {
         DrawCircleV({ x, y + 28.0f + bob }, 18.0f, C_MINT);
