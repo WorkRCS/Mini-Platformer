@@ -25,7 +25,7 @@ const Color C_GOLD      = { 255, 211, 92, 255 };
 const Color C_CORAL     = { 255, 112, 125, 255 };
 const Color C_WHITE_90  = { 242, 247, 255, 235 };
 
-enum class Screen { Menu, Controls, Playing, Paused, GameOver, Victory };
+enum class Screen { Menu, Controls, Settings, Playing, Paused, GameOver, Victory };
 
 struct Platform {
     Rectangle box;
@@ -124,6 +124,17 @@ float impactTimer = 0.0f;
 Vector2 impactScreenPos { VIEW_W * 0.5f, VIEW_H * 0.5f };
 bool pendingGameOver = false;
 bool exitRequested = false;
+
+// Process-local only: never saved to disk or shared with other users.
+bool cheatEnabled = false;
+std::string cheatPinEntry;
+std::string settingsMessage = "Enter PIN 74330 to enable safe exploration.";
+bool settingsPinError = false;
+int pendingHitObstacleType = -1;
+Rectangle pendingHitObstacleBox {};
+int lastHitObstacleType = -1;
+Rectangle lastHitObstacleBox {};
+Vector2 lastSafePlayerPosition {70.0f, 422.0f};
 
 const char* DifficultyName() {
     if (difficulty == 0) return "EASY";
@@ -422,15 +433,55 @@ const char* OptionalAssetPath(const char* fileName) {
 #endif
 }
 
+void RemoveOpaqueBlackBorder(Image* image) {
+    if (image == nullptr || image->data == nullptr || image->width < 1 || image->height < 1) return;
+    ImageFormat(image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    auto* pixels = static_cast<unsigned char*>(image->data);
+    const int w = image->width, h = image->height, total = w * h;
+    std::vector<unsigned char> visited(static_cast<size_t>(total), 0);
+    std::vector<int> queue;
+    queue.reserve(static_cast<size_t>(total / 3));
+
+    auto visit = [&](int x, int y) {
+        const int idx = y * w + x;
+        if (visited[static_cast<size_t>(idx)]) return;
+        visited[static_cast<size_t>(idx)] = 1;
+        const int p = idx * 4;
+        if (pixels[p + 3] == 0) return; // already transparent
+        // Clear only border-connected near-black matte, preserving dark interior outlines.
+        if (pixels[p] <= 35 && pixels[p + 1] <= 35 && pixels[p + 2] <= 35) {
+            pixels[p + 3] = 0;
+            queue.push_back(idx);
+        }
+    };
+    for (int x = 0; x < w; ++x) { visit(x, 0); visit(x, h - 1); }
+    for (int y = 0; y < h; ++y) { visit(0, y); visit(w - 1, y); }
+    for (size_t i = 0; i < queue.size(); ++i) {
+        const int idx = queue[i], x = idx % w, y = idx / w;
+        if (x > 0) visit(x - 1, y);
+        if (x + 1 < w) visit(x + 1, y);
+        if (y > 0) visit(x, y - 1);
+        if (y + 1 < h) visit(x, y + 1);
+    }
+}
+
 Texture2D LoadOptionalTexture(const char* fileName) {
-    const char* path=OptionalAssetPath(fileName);
-    if(path==nullptr) {
-        TraceLog(LOG_INFO,"ASSET: Optional %s not supplied; using built-in art",fileName);
+    const char* path = OptionalAssetPath(fileName);
+    if (path == nullptr) {
+        TraceLog(LOG_INFO, "ASSET: Optional %s not supplied; using built-in art", fileName);
         return Texture2D{};
     }
-    Texture2D texture=LoadTexture(path);
-    if(texture.id!=0) SetTextureFilter(texture,TEXTURE_FILTER_BILINEAR);
-    else TraceLog(LOG_WARNING,"ASSET: Could not load optional image %s",fileName);
+    Image image = LoadImage(path);
+    if (image.data == nullptr) {
+        TraceLog(LOG_WARNING, "ASSET: Could not load optional image %s", fileName);
+        return Texture2D{};
+    }
+    // Keep PNG alpha intact; remove only any opaque near-black background touching its edges.
+    RemoveOpaqueBlackBorder(&image);
+    Texture2D texture = LoadTextureFromImage(image);
+    UnloadImage(image);
+    if (texture.id != 0) SetTextureFilter(texture, TEXTURE_FILTER_BILINEAR);
+    else TraceLog(LOG_WARNING, "ASSET: Could not create texture for %s", fileName);
     return texture;
 }
 
@@ -688,6 +739,7 @@ void LoadLevel(int which) {
     player.pos = { 70.0f, 422.0f };
     player.vel = { 0.0f, 0.0f };
     player.grounded = false;
+    lastSafePlayerPosition = player.pos;
     cameraX = 0.0f;
     hurtFlash = 0.0f;
     damageNoticeTimer = 0.0f;
@@ -714,8 +766,13 @@ Rectangle PlayerRect() {
 }
 
 void TakeHit() {
-    if (hurtFlash > 0.0f || respawnTimer > 0.0f) return;
-
+    if (cheatEnabled || hurtFlash > 0.0f || respawnTimer > 0.0f) {
+        pendingHitObstacleType = -1;
+        return;
+    }
+    lastHitObstacleType = pendingHitObstacleType;
+    lastHitObstacleBox = pendingHitObstacleBox;
+    pendingHitObstacleType = -1;
     --player.lives;
     hurtFlash = 1.65f;
     damageNoticeTimer = 1.85f;
@@ -906,7 +963,9 @@ void UpdateGame(float dt) {
             std::max(1.0f, s.box.width - 2.0f * insetX),
             std::max(1.0f, s.box.height - insetY)
         };
-        if (CheckCollisionRecs(PlayerRect(), visibleHitbox)) {
+        if (CheckCollisionRecs(PlayerRect(), visibleHitbox) && !cheatEnabled) {
+            pendingHitObstacleType = s.type;
+            pendingHitObstacleBox = s.box;
             TakeHit();
             return;
         }
@@ -933,18 +992,30 @@ void UpdateGame(float dt) {
                 scoreNoticePos = { e.box.x + e.box.width * 0.5f, e.box.y };
                 scoreNoticeTimer = 0.78f;
                 PlayFx(sfxStomp);
-            } else {
+            } else if (!cheatEnabled) {
+                pendingHitObstacleType = -1;
                 TakeHit();
                 return;
             }
         }
     }
 
+    if (player.grounded) lastSafePlayerPosition = player.pos;
+
     if (player.pos.y > VIEW_H + 110.0f && screen == Screen::Playing) {
-        // Bring the fall impact into view so the life loss is never invisible off-screen.
-        player.pos.y = VIEW_H - PLAYER_H - 18.0f;
-        TakeHit();
-        return;
+        if (cheatEnabled) {
+            // Recover to the last safe ledge and continue exploring without losing a life.
+            player.pos = lastSafePlayerPosition;
+            player.vel = {0.0f, 0.0f};
+            player.grounded = false;
+            cameraX = std::clamp(player.pos.x - VIEW_W * 0.36f, 0.0f, WORLD_W - VIEW_W);
+            SpawnFootDust({player.pos.x + PLAYER_W * 0.5f, player.pos.y + PLAYER_H}, 10);
+        } else {
+            player.pos.y = VIEW_H - PLAYER_H - 18.0f;
+            pendingHitObstacleType = -1;
+            TakeHit();
+            return;
+        }
     }
 
     const float targetCamera = std::clamp(player.pos.x - VIEW_W * 0.36f,
@@ -1355,23 +1426,40 @@ void DrawDamageFeedback() {
         (screen != Screen::Playing && screen != Screen::Paused)) return;
     const float fade = std::clamp(damageNoticeTimer / 0.24f, 0.0f, 1.0f);
     const unsigned char alpha = static_cast<unsigned char>(250.0f * fade);
-    const float edge = std::clamp(damageNoticeTimer / 0.48f, 0.0f, 1.0f);
-    const unsigned char edgeAlpha = static_cast<unsigned char>(85.0f * edge);
-    DrawRectangle(0, 0, VIEW_W, 12, Color{ 255, 50, 83, edgeAlpha });
-    DrawRectangle(0, VIEW_H - 12, VIEW_W, 12, Color{ 255, 50, 83, edgeAlpha });
-    DrawRectangle(0, 0, 12, VIEW_H, Color{ 255, 50, 83, edgeAlpha });
-    DrawRectangle(VIEW_W - 12, 0, 12, VIEW_H, Color{ 255, 50, 83, edgeAlpha });
-    DrawRectangleRounded({ 304, 88, 352, 78 }, 0.18f, 12,
-                         Color{ 60, 15, 34, static_cast<unsigned char>(235.0f * fade) });
-    DrawRectangleRoundedLinesEx({ 304, 88, 352, 78 }, 0.18f, 12, 3.0f,
-                                Color{ 255, 90, 117, alpha });
-    DrawTriangle({ 329, 105 }, { 351, 145 }, { 307, 145 },
-                 Color{ 255, 91, 110, alpha });
-    DrawUIText("!", 324, 113, 25, Color{ 54, 18, 33, 255 });
-    DrawUIText(pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE",
-             365, 101, 24, Color{ 255, 164, 173, alpha });
-    DrawUIText(pendingGameOver ? "No lives left" : "Knocked back - respawning",
-             366, 133, 13, C_WHITE_90);
+    const bool cactusHit = lastHitObstacleType == 4;
+    const bool pillarHit = lastHitObstacleType == 5;
+
+    // Use a dark teal impact card and the actual obstacle sprite, not the old red alert triangle.
+    const Color panel = (cactusHit || pillarHit)
+        ? Color{ 13, 43, 43, static_cast<unsigned char>(238.0f * fade) }
+        : Color{ 38, 24, 42, static_cast<unsigned char>(238.0f * fade) };
+    DrawRectangleRounded({ 294, 88, 372, 82 }, 0.16f, 12, panel);
+    DrawRectangleRoundedLinesEx({ 294, 88, 372, 82 }, 0.16f, 12, 2.0f,
+        Color{ cactusHit ? (unsigned char)96 : (unsigned char)255,
+               cactusHit ? (unsigned char)224 : (unsigned char)90,
+               cactusHit ? (unsigned char)166 : (unsigned char)117, alpha });
+
+    if (cactusHit || pillarHit) {
+        const Spike badge = {
+            { 312.0f + cameraX, 100.0f, 46.0f, 56.0f },
+            cactusHit ? 4 : 5
+        };
+        DrawSpike(badge);
+    } else {
+        DrawCircleV({ 333, 126 }, 18.0f, Color{ 255, 91, 110, alpha });
+        DrawUIText("!", 326, 112, 23, Color{ 54, 18, 33, 255 });
+    }
+
+    const char* heading = cactusHit ? "CACTUS HIT!"
+                         : (pillarHit ? "PILLAR HIT!"
+                         : (pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE"));
+    const char* detail = pendingGameOver ? "No lives left"
+                         : "Knocked back - respawning";
+    DrawUIText(heading, 372, 101, 22,
+               Color{ cactusHit ? (unsigned char)148 : (unsigned char)255,
+                      cactusHit ? (unsigned char)255 : (unsigned char)164,
+                      cactusHit ? (unsigned char)214 : (unsigned char)173, alpha });
+    DrawUIText(detail, 373, 133, 13, C_WHITE_90);
 }
 
 void DrawHud() {
@@ -1385,6 +1473,7 @@ void DrawHud() {
         const Color heart=i<player.lives?C_CORAL:Color{75,82,103,255};
         DrawHeart(204.0f+i*17.0f,50.0f,heart);
     }
+    if (cheatEnabled) DrawUIText("INVINCIBLE", 204, 70, 10, C_MINT);
     DrawRectangleRounded({750,13,190,56},0.18f,7,Color{13,26,45,225});
     DrawRectangleRoundedLinesEx({750,13,190,56},0.18f,7,1.0f,Color{86,125,157,190});
     DrawUIText(DifficultyName(),765,30,15,C_WHITE_90);
@@ -1487,21 +1576,27 @@ void DrawTitle() {
              Color{ 160, 191, 216, 255 });
     DrawRectangle(570, 132, 305, 1, Color{ 77, 104, 137, 190 });
 
-    if (Button({ 570, 154, 305, 54 }, "PLAY")) StartGame();
-    if (Button({ 570, 223, 305, 54 },
+    if (Button({ 570, 148, 305, 46 }, "PLAY")) StartGame();
+    if (Button({ 570, 205, 305, 46 },
                TextFormat("DIFFICULTY: %s", DifficultyName()))) {
         difficulty = (difficulty + 1) % 3;
         PlayFx(sfxMenu);
     }
-    if (Button({ 570, 292, 305, 54 }, "HOW TO PLAY")) {
+    if (Button({ 570, 262, 305, 46 }, "HOW TO PLAY")) {
         PlayFx(sfxMenu);
         screen = Screen::Controls;
     }
+    if (Button({ 570, 319, 305, 46 }, "SETTINGS / CHEAT")) {
+        cheatPinEntry.clear();
+        settingsMessage = "Enter PIN 74330 to enable safe exploration.";
+        settingsPinError = false;
+        screen = Screen::Settings;
+    }
 
-    DrawRectangleRounded({ 570, 372, 305, 71 }, 0.12f, 8,
+    DrawRectangleRounded({ 570, 378, 305, 65 }, 0.12f, 8,
                          Color{ 22, 42, 64, 255 });
-    DrawUIText("BEST RUN", 590, 383, 12, Color{ 171, 198, 220, 255 });
-    DrawUIText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
+    DrawUIText("BEST RUN", 590, 389, 12, Color{ 171, 198, 220, 255 });
+    DrawUIText(TextFormat("%04d", highScore), 590, 406, 24, C_GOLD);
     DrawUIText("Collect coins.", 688, 392, 12, C_WHITE_90);
     DrawUIText("Reach the flag.", 688, 412, 12, C_WHITE_90);
     DrawUIText("ESC / P pauses during a run", 570, 460, 12,
@@ -1524,6 +1619,80 @@ void DrawControlsScreen() {
     DrawUIText("MOBILE", 275, 337, 17, C_GOLD);
     DrawUIText("Use the on-screen arrows and JUMP", 425, 337, 15, C_WHITE_90);
     if (Button({ 370, 381, 220, 42 }, "BACK")) screen = Screen::Menu;
+}
+
+void DrawSettingsScreen() {
+    DrawBackground(0.0f);
+    DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
+                           Color{ 8, 16, 38, 205 }, Color{ 10, 25, 43, 225 });
+    DrawRectangleRounded({ 258, 38, 444, 464 }, 0.06f, 12,
+                         Color{ 12, 24, 43, 248 });
+    DrawRectangleRoundedLinesEx({ 258, 38, 444, 464 }, 0.06f, 12, 2.0f,
+                                Color{ 92, 144, 166, 220 });
+    TextCentered("SETTINGS", 53, 29, C_WHITE_90);
+    TextCentered("LOCAL EXPLORE MODE", 88, 13, C_MINT);
+
+    DrawRectangleRounded({ 330, 111, 300, 42 }, 0.14f, 8, Color{ 6, 15, 30, 255 });
+    DrawRectangleRoundedLinesEx({ 330, 111, 300, 42 }, 0.14f, 8, 1.0f,
+                                Color{ 89, 124, 151, 255 });
+    const std::string masked = cheatPinEntry.empty()
+        ? "ENTER 5-DIGIT PIN" : std::string(cheatPinEntry.size(), '*');
+    DrawUIText(masked.c_str(), 349, 124, 17, C_WHITE_90);
+
+    const int colX[3] = { 365, 425, 485 };
+    const int rowY[3] = { 160, 201, 242 };
+    const char* labels[9] = { "1","2","3","4","5","6","7","8","9" };
+    for (int i = 0; i < 9; ++i) {
+        const int col = i % 3, row = i / 3;
+        if (Button({ static_cast<float>(colX[col]), static_cast<float>(rowY[row]),
+                     52, 35 }, labels[i])) {
+            if (cheatPinEntry.size() < 5) cheatPinEntry.push_back(labels[i][0]);
+            settingsMessage.clear();
+            settingsPinError = false;
+        }
+    }
+    if (Button({ 348, 283, 78, 35 }, "CLEAR")) {
+        cheatPinEntry.clear();
+        settingsMessage.clear();
+        settingsPinError = false;
+    }
+    if (Button({ 437, 283, 52, 35 }, "0")) {
+        if (cheatPinEntry.size() < 5) cheatPinEntry.push_back('0');
+        settingsMessage.clear();
+        settingsPinError = false;
+    }
+    if (Button({ 500, 283, 78, 35 }, "DEL")) {
+        if (!cheatPinEntry.empty()) cheatPinEntry.pop_back();
+        settingsMessage.clear();
+        settingsPinError = false;
+    }
+
+    const Color statusColor = cheatEnabled ? C_MINT
+        : (settingsPinError ? C_CORAL : Color{ 186, 208, 226, 255 });
+    const char* status = cheatEnabled ? "CHEAT ACTIVE - INVINCIBLE"
+                                      : (settingsMessage.empty() ? "CHEAT OFF" : settingsMessage.c_str());
+    TextCentered(status, 329, 12, statusColor);
+
+    if (Button({ 310, 355, 160, 42 }, "UNLOCK")) {
+        if (cheatPinEntry == "74330") {
+            cheatEnabled = true;
+            settingsMessage = "Explore mode enabled for this session.";
+            settingsPinError = false;
+        } else {
+            settingsMessage = "Wrong PIN - try again";
+            settingsPinError = true;
+        }
+        cheatPinEntry.clear();
+        PlayFx(sfxMenu);
+    }
+    if (Button({ 490, 355, 160, 42 }, "DISABLE CHEAT")) {
+        cheatEnabled = false;
+        cheatPinEntry.clear();
+        settingsMessage = "Cheat disabled. Normal rules restored.";
+        settingsPinError = false;
+        PlayFx(sfxMenu);
+    }
+    if (Button({ 370, 426, 220, 39 }, "BACK")) screen = Screen::Menu;
 }
 
 void DrawOverlay(const char* title, const char* subtitle) {
@@ -1599,6 +1768,18 @@ int main() {
             if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_P)) screen = Screen::Playing;
         } else if (screen == Screen::Controls) {
             if (IsKeyPressed(KEY_ESCAPE)) screen = Screen::Menu;
+        } else if (screen == Screen::Settings) {
+            if (IsKeyPressed(KEY_ESCAPE)) screen = Screen::Menu;
+            if (IsKeyPressed(KEY_BACKSPACE) && !cheatPinEntry.empty()) cheatPinEntry.pop_back();
+            int ch = GetCharPressed();
+            while (ch > 0) {
+                if (ch >= '0' && ch <= '9' && cheatPinEntry.size() < 5) {
+                    cheatPinEntry.push_back(static_cast<char>(ch));
+                    settingsMessage.clear();
+                    settingsPinError = false;
+                }
+                ch = GetCharPressed();
+            }
         } else if (screen == Screen::GameOver || screen == Screen::Victory) {
             if (IsKeyPressed(KEY_ESCAPE)) screen = Screen::Menu;
         }
@@ -1608,6 +1789,7 @@ int main() {
         switch (screen) {
             case Screen::Menu: DrawTitle(); break;
             case Screen::Controls: DrawControlsScreen(); break;
+            case Screen::Settings: DrawSettingsScreen(); break;
             case Screen::Playing: DrawGame(); break;
             case Screen::Paused: DrawPauseScreen(); break;
             case Screen::GameOver: DrawGameOverScreen(); break;
