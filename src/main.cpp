@@ -648,9 +648,15 @@ void LoadLevel(int which) {
             const bool hazardHere = i > 0 && ((i + levelIndex) % hazardEvery == 0);
             if (hazardHere && width >= 125.0f) {
                 Spike sp;
-                sp.box = { x + width * 0.25f, y - 26.0f,
-                           std::min(58.0f, width * 0.42f), 26.0f };
-                sp.type = (levelIndex + i) % 4;
+                sp.type = (levelIndex + i) % 6;
+                if (sp.type == 4) {
+                    sp.box = { x + width * 0.34f, y - 48.0f, 32.0f, 48.0f };
+                } else if (sp.type == 5) {
+                    sp.box = { x + width * 0.34f, y - 60.0f, 32.0f, 60.0f };
+                } else {
+                    sp.box = { x + width * 0.25f, y - 26.0f,
+                               std::min(58.0f, width * 0.42f), 26.0f };
+                }
                 spikes.push_back(sp);
             }
 
@@ -889,7 +895,15 @@ void UpdateGame(float dt) {
     }
 
     for (const auto& s : spikes) {
-        if (CheckCollisionRecs(PlayerRect(), s.box)) {
+        // Small inset avoids taking damage from invisible edges beyond the drawn object.
+        const float insetX = std::min(4.0f, s.box.width * 0.10f);
+        const float insetY = std::min(3.0f, s.box.height * 0.08f);
+        const Rectangle visibleHitbox = {
+            s.box.x + insetX, s.box.y + insetY,
+            std::max(1.0f, s.box.width - 2.0f * insetX),
+            std::max(1.0f, s.box.height - insetY)
+        };
+        if (CheckCollisionRecs(PlayerRect(), visibleHitbox)) {
             TakeHit();
             return;
         }
@@ -1032,6 +1046,16 @@ void DrawPlatform(const Platform& p) {
     for(float x=r.x+13;x<r.x+r.width-8;x+=37)
         DrawRectangle((int)x,(int)(r.y+24),17,4,Color{143,92,71,220});
     DrawRectangleLinesEx(r,1.5f,p.moving?Color{255,245,197,255}:Color{29,36,48,255});
+    if (!p.moving) {
+        const Texture2D art = (p.box.width >= 180.0f || p.box.height >= 70.0f)
+            ? platformLargeTexture : platformSmallTexture;
+        if (art.id != 0) {
+            const float artH = (p.box.width >= 180.0f || p.box.height >= 70.0f)
+                ? std::min(64.0f, r.height) : std::min(32.0f, r.height);
+            const Rectangle src = {0.0f, 0.0f, (float)art.width, (float)art.height};
+            DrawTexturePro(art, src, {r.x, r.y, r.width, artH}, {0.0f,0.0f}, 0.0f, WHITE);
+        }
+    }
     if(p.moving) {
         const float cy=r.y+17;
         DrawLineEx({r.x+12,cy},{r.x+23,cy},2,Color{255,244,190,255});
@@ -1051,40 +1075,71 @@ void DrawCoin(const Coin& coin) {
 }
 
 void DrawSpike(const Spike& spike) {
-    const float x = spike.box.x - cameraX, y = spike.box.y, w = spike.box.width;
-    if (x > VIEW_W || x + w < 0) return;
+    const float x=spike.box.x-cameraX, y=spike.box.y;
+    const float w=spike.box.width, h=spike.box.height;
+    if(x>VIEW_W||x+w<0)return;
 
-    // Each hazard has a unique visible silhouette, aligned to its collision box.
-    if (spike.type == 1) {
-        DrawEllipse((int)(x + w*0.5f), (int)(y+22), w*0.58f, 8, Color{18,49,48,255});
-        DrawCircleV({x+w*0.22f,y+15},13,Color{37,127,84,255});
-        DrawCircleV({x+w*0.48f,y+11},16,Color{66,178,98,255});
-        DrawCircleV({x+w*0.75f,y+15},13,Color{37,127,84,255});
-        DrawTriangle({x+w*.30f,y+9},{x+w*.39f,y+1},{x+w*.45f,y+11},Color{229,255,181,255});
-        DrawTriangle({x+w*.60f,y+10},{x+w*.71f,y+1},{x+w*.76f,y+12},Color{229,255,181,255});
-    } else if (spike.type == 2) {
-        DrawCircleV({x+w*.5f,y+17},23,Color{107,94,255,40});
-        DrawTriangle({x+2,y+26},{x+w*.30f,y+7},{x+w*.45f,y+26},Color{82,80,205,255});
-        DrawTriangle({x+w*.25f,y+26},{x+w*.52f,y-1},{x+w*.74f,y+26},Color{116,194,255,255});
-        DrawTriangle({x+w*.55f,y+26},{x+w*.82f,y+8},{x+w-2,y+26},Color{84,110,225,255});
-        DrawLineEx({x+w*.52f,y+3},{x+w*.52f,y+22},2,Color{230,251,255,255});
-    } else if (spike.type == 3) {
-        DrawCircleV({x+w*.5f,y+19},23,Color{255,74,30,42});
-        DrawTriangle({x+2,y+26},{x+w*.24f,y+9},{x+w*.42f,y+26},Color{196,48,40,255});
-        DrawTriangle({x+w*.25f,y+26},{x+w*.53f,y+1+std::sin(gameClock*8)*2},{x+w*.70f,y+26},Color{255,109,48,255});
-        DrawTriangle({x+w*.39f,y+26},{x+w*.53f,y+10},{x+w*.63f,y+26},Color{255,219,119,255});
-        DrawRectangle((int)x,(int)(y+24),(int)w,4,Color{118,37,42,255});
+    // Cactus and pillar are fully visible and use the exact same placement as collision.
+    if(spike.type==4) {
+        if(cactusTexture.id!=0) {
+            DrawTexturePro(cactusTexture,{0,0,(float)cactusTexture.width,(float)cactusTexture.height},
+                           {x,y,w,h},{0,0},0,WHITE);
+        } else {
+            DrawEllipse((int)(x+w*.5f),(int)(y+h-2),w*.75f,5,Color{7,15,24,130});
+            DrawRectangleRounded({x+w*.31f,y+7,w*.38f,h-7},.28f,8,Color{36,151,89,255});
+            DrawRectangleRoundedLinesEx({x+w*.31f,y+7,w*.38f,h-7},.28f,8,2,Color{17,74,58,255});
+            DrawRectangleRounded({x+w*.06f,y+h*.42f,w*.34f,h*.15f},.32f,6,Color{45,171,99,255});
+            DrawRectangleRounded({x+w*.60f,y+h*.28f,w*.34f,h*.15f},.32f,6,Color{45,171,99,255});
+            for(int j=0;j<3;++j) {
+                const float yy=y+14.0f+j*10.0f;
+                DrawTriangle({x+w*.30f,yy-3},{x+w*.18f,yy},{x+w*.30f,yy+3},Color{237,255,174,255});
+                DrawTriangle({x+w*.70f,yy-3},{x+w*.82f,yy},{x+w*.70f,yy+3},Color{237,255,174,255});
+            }
+        }
+    } else if(spike.type==5) {
+        if(pillarTexture.id!=0) {
+            DrawTexturePro(pillarTexture,{0,0,(float)pillarTexture.width,(float)pillarTexture.height},
+                           {x,y,w,h},{0,0},0,WHITE);
+        } else {
+            DrawEllipse((int)(x+w*.5f),(int)(y+h-2),w*.72f,5,Color{7,15,24,130});
+            DrawRectangleRounded({x+w*.18f,y+8,w*.64f,h-13},.08f,5,Color{111,125,149,255});
+            DrawRectangleRoundedLinesEx({x+w*.18f,y+8,w*.64f,h-13},.08f,5,2,Color{41,54,80,255});
+            DrawRectangleRounded({x+w*.06f,y+3,w*.88f,10},.08f,5,Color{177,194,212,255});
+            DrawRectangleRounded({x+w*.06f,y+h-11,w*.88f,10},.08f,5,Color{85,101,129,255});
+            DrawRectangle((int)(x+w*.31f),(int)(y+17),(int)(w*.12f),(int)(h-36),Color{199,219,235,255});
+        }
+    } else if(spike.type==1) {
+        DrawEllipse((int)(x+w*.5f),(int)(y+h-4),w*.58f,8,Color{18,49,48,255});
+        DrawCircleV({x+w*.22f,y+h*.60f},13,Color{37,127,84,255});
+        DrawCircleV({x+w*.48f,y+h*.45f},16,Color{66,178,98,255});
+        DrawCircleV({x+w*.75f,y+h*.60f},13,Color{37,127,84,255});
+        DrawTriangle({x+w*.30f,y+h*.36f},{x+w*.39f,y+1},{x+w*.45f,y+h*.42f},Color{229,255,181,255});
+        DrawTriangle({x+w*.60f,y+h*.39f},{x+w*.71f,y+1},{x+w*.76f,y+h*.43f},Color{229,255,181,255});
+    } else if(spike.type==2) {
+        DrawCircleV({x+w*.5f,y+h*.55f},23,Color{107,94,255,40});
+        DrawTriangle({x+2,y+h},{x+w*.30f,y+h*.28f},{x+w*.45f,y+h},Color{82,80,205,255});
+        DrawTriangle({x+w*.25f,y+h},{x+w*.52f,y-1},{x+w*.74f,y+h},Color{116,194,255,255});
+        DrawTriangle({x+w*.55f,y+h},{x+w*.82f,y+h*.30f},{x+w-2,y+h},Color{84,110,225,255});
+        DrawLineEx({x+w*.52f,y+3},{x+w*.52f,y+h-4},2,Color{230,251,255,255});
+    } else if(spike.type==3) {
+        DrawCircleV({x+w*.5f,y+h*.60f},23,Color{255,74,30,42});
+        DrawTriangle({x+2,y+h},{x+w*.24f,y+h*.35f},{x+w*.42f,y+h},Color{196,48,40,255});
+        DrawTriangle({x+w*.25f,y+h},{x+w*.53f,y+1+std::sin(gameClock*8)*2},{x+w*.70f,y+h},Color{255,109,48,255});
+        DrawTriangle({x+w*.39f,y+h},{x+w*.53f,y+h*.38f},{x+w*.63f,y+h},Color{255,219,119,255});
+        DrawRectangle((int)x,(int)(y+h-4),(int)w,4,Color{118,37,42,255});
     } else {
         const int n=std::max(1,(int)(w/17.0f)); const float sw=w/n;
-        DrawRectangleRounded({x-2,y+20,w+4,8},.25f,5,Color{91,25,45,255});
+        DrawRectangleRounded({x-2,y+h-6,w+4,8},.25f,5,Color{91,25,45,255});
         for(int i=0;i<n;++i) {
             const float x1=x+i*sw;
-            DrawTriangle({x1,y+26},{x1+sw*.5f,y-2},{x1+sw,y+26},Color{111,28,54,255});
-            DrawTriangle({x1+1,y+25},{x1+sw*.5f,y+2},{x1+sw-1,y+25},Color{255,88,105,255});
-            DrawTriangle({x1+sw*.20f,y+23},{x1+sw*.47f,y+7},{x1+sw*.56f,y+23},Color{255,190,184,255});
+            DrawTriangle({x1,y+h},{x1+sw*.5f,y-2},{x1+sw,y+h},Color{111,28,54,255});
+            DrawTriangle({x1+1,y+h-1},{x1+sw*.5f,y+2},{x1+sw-1,y+h-1},Color{255,88,105,255});
+            DrawTriangle({x1+sw*.20f,y+h-3},{x1+sw*.47f,y+h*.28f},{x1+sw*.56f,y+h-3},Color{255,190,184,255});
         }
     }
 }
+
+
 void DrawEnemy(const Enemy& e) {
     if (!e.alive) return;
     const float x = e.box.x - cameraX;
