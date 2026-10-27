@@ -130,6 +130,7 @@ bool cheatEnabled = false;
 std::string cheatPinEntry;
 std::string settingsMessage = "Enter PIN 74330 to enable safe exploration.";
 bool settingsPinError = false;
+bool settingsFromPause = false;
 int pendingHitObstacleType = -1;
 Rectangle pendingHitObstacleBox {};
 int lastHitObstacleType = -1;
@@ -1590,6 +1591,7 @@ void DrawTitle() {
         screen = Screen::Controls;
     }
     if (Button({ 570, 319, 305, 46 }, "SETTINGS / CHEAT")) {
+        settingsFromPause = false;
         cheatPinEntry.clear();
         settingsMessage = "Enter PIN 74330 to enable safe exploration.";
         settingsPinError = false;
@@ -1695,13 +1697,16 @@ void DrawSettingsScreen() {
         settingsPinError = false;
         PlayFx(sfxMenu);
     }
-    if (Button({ 370, 426, 220, 39 }, "BACK")) screen = Screen::Menu;
+    if (Button({ 370, 426, 220, 39 }, "BACK")) {
+        screen = settingsFromPause ? Screen::Paused : Screen::Menu;
+        settingsFromPause = false;
+    }
 }
 
 void DrawOverlay(const char* title, const char* subtitle) {
     DrawGame();
     DrawRectangle(0, 0, VIEW_W, VIEW_H, Color{ 5, 12, 25, 175 });
-    DrawRectangleRounded({ 268, 144, 424, 252 }, 0.07f, 10, Color{ 18, 31, 54, 248 });
+    DrawRectangleRounded({ 268, 144, 424, 300 }, 0.07f, 10, Color{ 18, 31, 54, 248 });
     DrawRectangleRoundedLinesEx({ 268, 144, 424, 252 }, 0.07f, 10, 2,
                               Color{ 83, 130, 163, 220 });
     TextCentered(title, 177, 32, C_WHITE_90);
@@ -1710,13 +1715,24 @@ void DrawOverlay(const char* title, const char* subtitle) {
 
 void DrawPauseScreen() {
     DrawOverlay("PAUSED", "Take a breath. The trail will wait.");
-    if (Button({ 350, 262, 260, 42 }, "RESUME")) screen = Screen::Playing;
-    if (Button({ 350, 314, 260, 38 }, "RESTART LEVEL")) {
+    if (Button({ 350, 250, 260, 38 }, "RESUME")) screen = Screen::Playing;
+    if (Button({ 350, 294, 260, 34 }, "RESTART LEVEL")) {
         player.lives = StartingLives();
         LoadLevel(levelIndex);
         screen = Screen::Playing;
     }
-    if (Button({ 350, 362, 260, 28 }, "MAIN MENU")) screen = Screen::Menu;
+    if (Button({ 350, 334, 260, 34 }, "SETTINGS / CHEAT")) {
+        settingsFromPause = true;
+        cheatPinEntry.clear();
+        settingsMessage = cheatEnabled ? "Cheat is active. Disable it here." :
+                                         "Enter PIN 74330 to enable safe exploration.";
+        settingsPinError = false;
+        screen = Screen::Settings;
+    }
+    if (Button({ 350, 374, 260, 34 }, "MAIN MENU")) {
+        settingsFromPause = false;
+        screen = Screen::Menu;
+    }
 }
 
 void DrawGameOverScreen() {
