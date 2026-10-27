@@ -35,3 +35,23 @@ jobs:
       - name: Build
         shell: msys2 {0}
         run: cmake --build build --verbose
+
+      - name: Package Windows PC build
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist
+          cp build/TinyTrails.exe dist/
+          if [ -d build/assets ]; then cp -a build/assets dist/assets; fi
+          # Bundle MSYS2 runtime DLLs resolved by the built executable.
+          ldd build/TinyTrails.exe | while IFS= read -r line; do
+            dep="$(printf '%s\n' "$line" | sed -nE 's/.*=> (\/[^ ]+).*/\1/p')"
+            if [[ "$dep" == /ucrt64/bin/* && -f "$dep" ]]; then cp -u "$dep" dist/; fi
+          done
+          find dist -maxdepth 1 -name '*.dll' -print
+
+      - name: Upload Windows PC game
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wildbound-PC-Windows
+          path: dist/
+          if-no-files-found: error
