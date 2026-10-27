@@ -35,18 +35,18 @@ Both visual assets are already tracked in `assets/`, so a fresh clone contains t
 
 Clone the project and build it:
 
-\`\`\`bash
+```bash
 cd /d
 git clone https://github.com/WorkRCS/Mini-Platformer.git
 cd Mini-Platformer
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/TinyTrails.exe
-\`\`\`
+```
 
-If you have already cloned the repository, skip \`git clone\` and \`cd Mini-Platformer\`, then run the CMake commands from the project folder. The game is launched from the MSYS2 terminal so its raylib DLL is available on PATH.
+If you have already cloned the repository, skip `git clone` and `cd Mini-Platformer`, then run the CMake commands from the project folder. The game is launched from the MSYS2 terminal so its raylib DLL is available on PATH.
 
-You can also run \`bash build-msys2.sh\` from the project root after installing the dependencies.
+You can also run `bash build-msys2.sh` from the project root after installing the dependencies.
 
 
 ## Fix VS Code `raylib.h` include errors
@@ -64,7 +64,7 @@ If MSYS2 is installed somewhere other than `C:\msys64`, update `compilerPath` an
 
 ## Android
 
-The same game source includes touch controls and raylib gamepad input. Android Studio project files are in the \`android/\` folder. See [android/README.md](android/README.md) for the SDK/NDK requirements and APK build steps.
+The same game source includes touch controls and raylib gamepad input. Android Studio project files are in the `android/` folder. See [android/README.md](android/README.md) for the SDK/NDK requirements and APK build steps.
 
 ## Project layout
 
@@ -76,6 +76,6 @@ Mini-Platformer/
 └── android/
     ├── app/build.gradle
     └── app/src/main/AndroidManifest.xml
-\`\`\`
+```
 
 The character uses a 5-column x 4-row sprite atlas (idle, walk, run, jump/landing), and the animated background uses the supplied 8-frame GIF. The same `assets/` folder is copied beside the desktop build and packaged into Android. Sound effects are synthesized at runtime, so no audio files are required.
