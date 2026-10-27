@@ -10,8 +10,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# WILDBOUND is replacing the original 2D platformer with a third-person 3D
+# monster-hunting prototype. Keep src/main.cpp as the legacy reference while
+# the new gameplay is developed in src/adventure3d.cpp.
+set(GAME_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/adventure3d.cpp")
+
 if(ANDROID)
-    # Android builds use the official raylib source and NativeActivity toolchain.
     include(FetchContent)
     set(PLATFORM "Android" CACHE STRING "raylib target platform" FORCE)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -27,21 +31,15 @@ if(ANDROID)
     )
     FetchContent_MakeAvailable(raylib)
 
-    # Android's NativeActivity loads this shared object as libmain.so.
-    add_library(main SHARED src/main.cpp)
+    add_library(main SHARED ${GAME_SOURCE})
     target_compile_features(main PRIVATE cxx_std_17)
     target_link_libraries(main PRIVATE raylib android log)
-
-    # raylib 6.0 adds android_native_app_glue.c to its static library for Android,
-    # but sets -u ANativeActivity_onCreate in the raylib subdirectory's linker flags.
-    # This app target is created in the parent directory, so explicitly force the
-    # glue object's entry point into libmain.so for Android NativeActivity.
+    # raylib's android_native_app_glue entrypoint must be retained in libmain.so.
     target_link_options(main PRIVATE "-Wl,-u,ANativeActivity_onCreate")
-
     target_compile_definitions(main PRIVATE PLATFORM_ANDROID)
 else()
     find_package(raylib CONFIG REQUIRED)
-    add_executable(TinyTrails src/main.cpp)
+    add_executable(TinyTrails ${GAME_SOURCE})
     target_compile_features(TinyTrails PRIVATE cxx_std_17)
     target_link_libraries(TinyTrails PRIVATE raylib)
     if(MINGW)
@@ -58,8 +56,7 @@ else()
     endif()
 endif()
 
-# Bundle supplied art next to the desktop executable when assets are present.
-# Running from either the repository root or the build directory will then find them.
+# Copy local art packs beside the desktop executable when present.
 if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
     file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_BINARY_DIR}")
 endif()
