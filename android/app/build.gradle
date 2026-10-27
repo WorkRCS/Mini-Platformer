@@ -20,8 +20,10 @@ android {
         versionCode 1
         versionName '0.1.0'
 
+        // The current test target is a modern ARM64 Android phone.
+        // Skipping emulator/32-bit ABIs avoids configuring and compiling raylib three times.
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            abiFilters 'arm64-v8a'
         }
 
         externalNativeBuild {
