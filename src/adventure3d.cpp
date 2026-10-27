@@ -536,9 +536,8 @@ void DrawPlayerModel() {
     const Vector3 p = player.position;
     DrawCircle3D(V3(p.x, 0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                  WithAlpha(Color{ 14, 22, 25, 255 }, 105));
-    Vector3 hand = V3(p.x+0.42f, p.y+0.94f, p.z-0.06f);
     if (sketchfabHeroReady) {
-        // Sketchfab downloads are expected to be GLB, around human height, with the front toward -Z.
+        // Sketchfab downloads are expected to be around human height and face toward -Z.
         const float yaw = std::atan2(-player.facing.x, -player.facing.z) * RAD2DEG;
         DrawModelEx(sketchfabHeroModel, V3(p.x, p.y, p.z), V3(0.0f, 1.0f, 0.0f), yaw,
                     V3(1.35f, 1.35f, 1.35f), WHITE);
@@ -547,7 +546,6 @@ void DrawPlayerModel() {
         const float bodyBob = player.grounded ? std::fabs(std::sin(player.walkClock*10.5f))*0.05f : 0.0f;
         Color armor = player.hurtFlash > 0.0f ? WHITE : Color{ 65, 109, 164, 255 };
         Color cloth = Color{ 32, 54, 89, 255 };
-        // Procedural fallback until the Sketchfab hero GLB has been installed.
         DrawCube(V3(p.x, p.y+1.10f+bodyBob, p.z), 0.56f, 0.78f, 0.36f, armor);
         DrawCube(V3(p.x, p.y+0.64f+bodyBob, p.z-0.02f), 0.62f, 0.32f, 0.41f, cloth);
         DrawCube(V3(p.x, p.y+1.08f+bodyBob, p.z+0.235f), 0.38f, 0.60f, 0.09f, Color{ 112, 47, 59, 255 });
@@ -563,17 +561,18 @@ void DrawPlayerModel() {
         DrawCylinderEx(rightHip, V3(p.x+0.18f-step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
         DrawCylinderEx(V3(p.x-0.32f, p.y+1.36f, p.z), V3(p.x-0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
         DrawCylinderEx(V3(p.x+0.32f, p.y+1.36f, p.z), V3(p.x+0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
+        const Vector3 hand = V3(p.x+0.42f, p.y+0.94f, p.z-0.06f);
+        Vector3 swordTip = V3(hand.x+player.facing.x*0.95f, hand.y+0.28f, hand.z+player.facing.z*0.95f);
+        if (player.attackClock > 0.0f) {
+            const float swing = (0.5f-player.attackClock)*3.2f;
+            swordTip.x += std::sin(swing*PI)*0.5f;
+            swordTip.y += std::sin(swing*PI)*0.4f;
+            swordTip.z -= std::fabs(std::sin(swing*PI))*0.45f;
+        }
+        DrawCylinderEx(hand, swordTip, 0.055f, 0.018f, 6, C_GOLD);
+        DrawCylinderEx(V3(hand.x, hand.y-0.12f, hand.z), V3(hand.x, hand.y+0.12f, hand.z),
+                       0.07f, 0.07f, 6, Color{ 100, 63, 42, 255 });
     }
-    Vector3 swordTip = V3(hand.x+player.facing.x*0.95f, hand.y+0.28f, hand.z+player.facing.z*0.95f);
-    if (player.attackClock > 0.0f) {
-        const float swing = (0.5f-player.attackClock)*3.2f;
-        swordTip.x += std::sin(swing*PI)*0.5f;
-        swordTip.y += std::sin(swing*PI)*0.4f;
-        swordTip.z -= std::fabs(std::sin(swing*PI))*0.45f;
-    }
-    DrawCylinderEx(hand, swordTip, 0.055f, 0.018f, 6, C_GOLD);
-    DrawCylinderEx(V3(hand.x, hand.y-0.12f, hand.z), V3(hand.x, hand.y+0.12f, hand.z),
-                   0.07f, 0.07f, 6, Color{ 100, 63, 42, 255 });
     if (player.attackClock > 0.0f) {
         DrawCylinderEx(V3(p.x+player.facing.x*0.55f, p.y+1.0f, p.z+player.facing.z*0.55f),
                        V3(p.x+player.facing.x*2.5f, p.y+1.0f, p.z+player.facing.z*2.5f),
