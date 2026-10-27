@@ -9,8 +9,8 @@ namespace {
 constexpr int VIEW_W = 960;
 constexpr int VIEW_H = 540;
 constexpr float WORLD_W = 2840.0f;
-constexpr float PLAYER_W = 28.0f;
-constexpr float PLAYER_H = 38.0f;
+constexpr float PLAYER_W = 36.0f;
+constexpr float PLAYER_H = 48.0f;
 constexpr float GRAVITY = 1120.0f;
 constexpr float JUMP_SPEED = 485.0f;
 
@@ -45,7 +45,7 @@ struct Particle {
     Color color;
 };
 struct Player {
-    Vector2 pos { 70.0f, 432.0f };
+    Vector2 pos { 70.0f, 422.0f };
     Vector2 vel { 0.0f, 0.0f };
     bool grounded = false;
     int lives = 3;
@@ -90,6 +90,8 @@ int scoreNoticeValue = 0;
 Vector2 scoreNoticePos { 0.0f, 0.0f };
 float respawnTimer = 0.0f;
 float screenShakeTimer = 0.0f;
+float impactTimer = 0.0f;
+Vector2 impactScreenPos { VIEW_W * 0.5f, VIEW_H * 0.5f };
 bool pendingGameOver = false;
 bool exitRequested = false;
 
@@ -240,7 +242,8 @@ void AddCoin(float x, float y, float phase) {
 
 void AddEnemy(float x, float y, float minX, float maxX, float baseSpeed) {
     float scale = difficulty == 0 ? 0.78f : (difficulty == 2 ? 1.35f : 1.0f);
-    enemies.push_back({ { x, y, 30.0f, 27.0f }, minX, maxX,
+    // Keep the enemy feet on the same platform while giving the silhouette more room.
+    enemies.push_back({ { x, y - 5.0f, 36.0f, 32.0f }, minX, maxX,
                         baseSpeed * scale, 1, true });
 }
 
@@ -315,7 +318,7 @@ void LoadLevel(int which) {
         AddEnemy(2320, 363, 2300, 2410, 125.0f);
     }
 
-    player.pos = { 70.0f, 432.0f };
+    player.pos = { 70.0f, 422.0f };
     player.vel = { 0.0f, 0.0f };
     player.grounded = false;
     cameraX = 0.0f;
@@ -325,6 +328,7 @@ void LoadLevel(int which) {
     scoreNoticeValue = 0;
     respawnTimer = 0.0f;
     screenShakeTimer = 0.0f;
+    impactTimer = 0.0f;
     pendingGameOver = false;
 }
 
@@ -344,20 +348,22 @@ void TakeHit() {
     if (hurtFlash > 0.0f || respawnTimer > 0.0f) return;
 
     --player.lives;
-    hurtFlash = 1.35f;
-    damageNoticeTimer = 1.15f;
-    respawnTimer = 0.42f;
-    screenShakeTimer = 0.24f;
+    hurtFlash = 1.65f;
+    damageNoticeTimer = 1.85f;
+    respawnTimer = 0.68f;
+    screenShakeTimer = 0.34f;
+    impactTimer = 0.42f;
     pendingGameOver = player.lives <= 0;
 
     const Vector2 impact = { player.pos.x + PLAYER_W * 0.5f,
                              player.pos.y + PLAYER_H * 0.5f };
-    SpawnParticles(impact, C_CORAL, 28);
+    impactScreenPos = { impact.x - cameraX, impact.y };
+    SpawnParticles(impact, C_CORAL, 36);
     PlayFx(sfxHurt);
 
-    // Kick the player away from the hazard before respawning, so damage is visible.
-    player.vel.x = player.vel.x >= 0.0f ? -150.0f : 150.0f;
-    player.vel.y = -235.0f;
+    // Visible knockback first; the player remains rendered and tinted instead of vanishing.
+    player.vel.x = player.vel.x >= 0.0f ? -210.0f : 210.0f;
+    player.vel.y = -285.0f;
     player.grounded = false;
 }
 
@@ -378,6 +384,7 @@ void UpdateGame(float dt) {
     damageNoticeTimer = std::max(0.0f, damageNoticeTimer - dt);
     scoreNoticeTimer = std::max(0.0f, scoreNoticeTimer - dt);
     screenShakeTimer = std::max(0.0f, screenShakeTimer - dt);
+    impactTimer = std::max(0.0f, impactTimer - dt);
     UpdateParticles(dt);
 
     if (respawnTimer > 0.0f) {
@@ -391,7 +398,7 @@ void UpdateGame(float dt) {
                 pendingGameOver = false;
                 screen = Screen::GameOver;
             } else {
-                player.pos = { 70.0f, 432.0f };
+                player.pos = { 70.0f, 422.0f };
                 player.vel = { 0.0f, 0.0f };
                 player.grounded = false;
                 cameraX = 0.0f;
@@ -584,19 +591,25 @@ void DrawBackground(float camX) {
 }
 
 void DrawPlatform(const Platform& p) {
-    Rectangle r = { p.box.x - cameraX, p.box.y, p.box.width, p.box.height };
+    const Rectangle r = { p.box.x - cameraX, p.box.y, p.box.width, p.box.height };
     if (r.x > VIEW_W || r.x + r.width < 0) return;
-    DrawRectangleRounded({ r.x, r.y + 7, r.width, r.height }, 0.08f, 5,
-                         Color{ 10, 23, 37, 110 });
-    DrawRectangleRec(r, Color{ 42, 72, 93, 255 });
+
+    // Dark outline + warm earth make the walkable surface obvious at a glance.
+    DrawRectangleRounded({ r.x, r.y + 6, r.width, r.height }, 0.08f, 5,
+                         Color{ 8, 16, 30, 155 });
+    DrawRectangleRec(r, Color{ 104, 70, 57, 255 });
+    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 9),
+                  static_cast<int>(r.width), static_cast<int>(std::max(0.0f, r.height - 9)),
+                  Color{ 75, 49, 48, 255 });
     DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y),
-                  static_cast<int>(r.width), 8, Color{ 105, 222, 164, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 8),
-                  static_cast<int>(r.width), 3, Color{ 65, 155, 126, 255 });
-    for (float x = r.x + 15; x < r.x + r.width - 8; x += 37) {
-        DrawRectangle(static_cast<int>(x), static_cast<int>(r.y + 20),
-                      13, 3, Color{ 70, 104, 126, 180 });
+                  static_cast<int>(r.width), 10, Color{ 83, 225, 143, 255 });
+    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 10),
+                  static_cast<int>(r.width), 4, Color{ 42, 151, 103, 255 });
+    for (float x = r.x + 13; x < r.x + r.width - 8; x += 37) {
+        DrawRectangle(static_cast<int>(x), static_cast<int>(r.y + 24),
+                      17, 4, Color{ 143, 92, 71, 255 });
     }
+    DrawRectangleLinesEx(r, 1.5f, Color{ 29, 36, 48, 255 });
 }
 
 void DrawCoin(const Coin& coin) {
@@ -615,15 +628,24 @@ void DrawSpike(const Spike& spike) {
     if (x > VIEW_W || x + spike.box.width < 0) return;
     const int n = std::max(1, static_cast<int>(spike.box.width / 17.0f));
     const float sw = spike.box.width / n;
+
+    // Bright danger strip matches the actual collision rectangle.
+    DrawRectangleRounded({ x - 2.0f, spike.box.y + spike.box.height - 5.0f,
+                           spike.box.width + 4.0f, 8.0f },
+                         0.25f, 5, Color{ 91, 25, 45, 255 });
     for (int i = 0; i < n; ++i) {
         const float x1 = x + i * sw;
         DrawTriangle({ x1, spike.box.y + spike.box.height },
-                     { x1 + sw * 0.5f, spike.box.y },
+                     { x1 + sw * 0.5f, spike.box.y - 2.0f },
                      { x1 + sw, spike.box.y + spike.box.height },
-                     Color{ 255, 106, 119, 255 });
-        DrawTriangle({ x1 + sw * 0.22f, spike.box.y + spike.box.height - 2.0f },
-                     { x1 + sw * 0.48f, spike.box.y + 4.0f },
-                     { x1 + sw * 0.58f, spike.box.y + spike.box.height - 2.0f },
+                     Color{ 111, 28, 54, 255 });
+        DrawTriangle({ x1 + 1.0f, spike.box.y + spike.box.height - 1.0f },
+                     { x1 + sw * 0.5f, spike.box.y + 2.0f },
+                     { x1 + sw - 1.0f, spike.box.y + spike.box.height - 1.0f },
+                     Color{ 255, 88, 105, 255 });
+        DrawTriangle({ x1 + sw * 0.20f, spike.box.y + spike.box.height - 3.0f },
+                     { x1 + sw * 0.47f, spike.box.y + 7.0f },
+                     { x1 + sw * 0.56f, spike.box.y + spike.box.height - 3.0f },
                      Color{ 255, 190, 184, 255 });
     }
 }
@@ -632,40 +654,80 @@ void DrawEnemy(const Enemy& e) {
     if (!e.alive) return;
     const float x = e.box.x - cameraX;
     if (x > VIEW_W || x + e.box.width < 0) return;
-    DrawRectangleRounded({ x, e.box.y + 4, e.box.width, e.box.height - 4 },
-                         0.35f, 6, Color{ 172, 72, 105, 255 });
-    DrawRectangleRounded({ x + 3, e.box.y, e.box.width - 6, e.box.height - 7 },
-                         0.35f, 6, C_CORAL);
-    DrawCircle(static_cast<int>(x + 10), static_cast<int>(e.box.y + 10), 3.0f, WHITE);
-    DrawCircle(static_cast<int>(x + 21), static_cast<int>(e.box.y + 10), 3.0f, WHITE);
-    DrawCircle(static_cast<int>(x + 11 + e.direction), static_cast<int>(e.box.y + 10), 1.4f, C_INK);
-    DrawCircle(static_cast<int>(x + 22 + e.direction), static_cast<int>(e.box.y + 10), 1.4f, C_INK);
+
+    DrawEllipse(static_cast<int>(x + e.box.width * 0.5f),
+                static_cast<int>(e.box.y + e.box.height + 2.0f),
+                23.0f, 5.0f, Color{ 9, 17, 30, 115 });
+    DrawRectangleRounded({ x, e.box.y + 3.0f, e.box.width, e.box.height - 3.0f },
+                         0.30f, 8, Color{ 96, 24, 57, 255 });
+    DrawRectangleRounded({ x + 2.0f, e.box.y, e.box.width - 4.0f, e.box.height - 7.0f },
+                         0.30f, 8, C_CORAL);
+    DrawRectangleRoundedLinesEx({ x + 2.0f, e.box.y, e.box.width - 4.0f,
+                                  e.box.height - 7.0f }, 0.30f, 8, 2.0f,
+                                Color{ 255, 209, 202, 255 });
+    DrawCircle(static_cast<int>(x + 12), static_cast<int>(e.box.y + 12), 5.0f, WHITE);
+    DrawCircle(static_cast<int>(x + 25), static_cast<int>(e.box.y + 12), 5.0f, WHITE);
+    DrawCircle(static_cast<int>(x + 13 + e.direction * 1.5f),
+               static_cast<int>(e.box.y + 12), 2.2f, C_INK);
+    DrawCircle(static_cast<int>(x + 26 + e.direction * 1.5f),
+               static_cast<int>(e.box.y + 12), 2.2f, C_INK);
+    DrawLineEx({ x + 9.0f, e.box.y + 23.0f }, { x + 27.0f, e.box.y + 23.0f },
+               2.0f, Color{ 92, 24, 49, 255 });
 }
 
 void DrawPlayer() {
     const float x = player.pos.x - cameraX;
-    const float bob = player.grounded && std::fabs(player.vel.x) > 1.0f
-                      ? std::sin(gameClock * 17.0f) * 2.0f : 0.0f;
-    const float y = player.pos.y + bob;
-    if (hurtFlash > 0.0f && static_cast<int>(gameClock * 18.0f) % 2 == 0) return;
+    const float run = player.grounded && std::fabs(player.vel.x) > 1.0f
+                      ? std::sin(gameClock * 15.0f) : 0.0f;
+    const float y = player.pos.y + (run != 0.0f ? std::fabs(run) * 1.5f : 0.0f);
+    const bool damaged = hurtFlash > 0.0f || respawnTimer > 0.0f;
+    const float facing = player.vel.x < -1.0f ? -1.0f : 1.0f;
 
     DrawEllipse(static_cast<int>(x + PLAYER_W * 0.5f),
-                static_cast<int>(player.pos.y + PLAYER_H + 2), 19, 5,
-                Color{ 8, 21, 31, 75 });
-    DrawRectangleRounded({ x + 1, y + 10, PLAYER_W - 2, PLAYER_H - 10 },
-                         0.30f, 7, Color{ 67, 191, 173, 255 });
-    DrawRectangleRounded({ x + 4, y + 4, PLAYER_W - 8, 21 },
-                         0.45f, 8, Color{ 142, 255, 214, 255 });
-    DrawRectangle(x + 6, y + 20, PLAYER_W - 12, 4, Color{ 49, 139, 145, 255 });
-    DrawCircle(static_cast<int>(x + 11), static_cast<int>(y + 14), 3.1f, WHITE);
-    DrawCircle(static_cast<int>(x + 21), static_cast<int>(y + 14), 3.1f, WHITE);
-    const float look = player.vel.x > 0.0f ? 1.0f : (player.vel.x < 0.0f ? -1.0f : 0.0f);
-    DrawCircle(static_cast<int>(x + 11 + look), static_cast<int>(y + 14), 1.5f, C_INK);
-    DrawCircle(static_cast<int>(x + 21 + look), static_cast<int>(y + 14), 1.5f, C_INK);
-    DrawRectangleRounded({ x + 5, y + PLAYER_H - 5, 7, 8 }, 0.3f, 4,
-                         Color{ 36, 91, 116, 255 });
-    DrawRectangleRounded({ x + 17, y + PLAYER_H - 5, 7, 8 }, 0.3f, 4,
-                         Color{ 36, 91, 116, 255 });
+                static_cast<int>(player.pos.y + PLAYER_H + 2.0f),
+                23.0f, 6.0f, Color{ 8, 15, 27, 135 });
+
+    // Back accent and limbs establish a readable silhouette at native 960x540 size.
+    DrawRectangleRounded({ x + 4.0f, y + 22.0f, 28.0f, 22.0f }, 0.28f, 8,
+                         Color{ 20, 65, 91, 255 });
+    DrawRectangleRounded({ x + 7.0f, y + 26.0f, 8.0f, 17.0f + run * 2.0f },
+                         0.3f, 5, Color{ 52, 105, 136, 255 });
+    DrawRectangleRounded({ x + 21.0f, y + 26.0f, 8.0f, 17.0f - run * 2.0f },
+                         0.3f, 5, Color{ 52, 105, 136, 255 });
+    DrawRectangleRounded({ x + 2.0f, y + 23.0f, 32.0f, 22.0f },
+                         0.28f, 8, damaged ? C_CORAL : C_MINT);
+    DrawRectangleRoundedLinesEx({ x + 2.0f, y + 23.0f, 32.0f, 22.0f },
+                                0.28f, 8, 2.0f, Color{ 18, 47, 69, 255 });
+    DrawRectangleRounded({ x + 4.0f, y + 29.0f, 28.0f, 5.0f },
+                         0.4f, 6, damaged ? Color{ 255, 235, 230, 255 }
+                                           : Color{ 255, 211, 92, 255 });
+
+    // Head, hair/hood, cheeks, eyes and pupils are deliberately high-contrast.
+    DrawCircleV({ x + 18.0f, y + 15.0f }, 14.0f,
+                damaged ? Color{ 255, 197, 192, 255 } : Color{ 226, 255, 241, 255 });
+    DrawCircleLines(static_cast<int>(x + 18.0f), static_cast<int>(y + 15.0f),
+                    14.0f, Color{ 18, 47, 69, 255 });
+    DrawCircleV({ x + 18.0f, y + 7.0f }, 11.5f,
+                damaged ? Color{ 133, 38, 64, 255 } : Color{ 39, 94, 123, 255 });
+    DrawRectangleRounded({ x + 6.0f, y + 8.0f, 24.0f, 8.0f }, 0.35f, 6,
+                         damaged ? Color{ 255, 166, 164, 255 }
+                                 : Color{ 74, 151, 171, 255 });
+    const float eyeShift = facing * 1.5f;
+    DrawCircleV({ x + 12.0f + eyeShift, y + 16.0f }, 4.0f, WHITE);
+    DrawCircleV({ x + 23.0f + eyeShift, y + 16.0f }, 4.0f, WHITE);
+    DrawCircleV({ x + 12.0f + eyeShift, y + 16.0f }, 2.0f, C_INK);
+    DrawCircleV({ x + 23.0f + eyeShift, y + 16.0f }, 2.0f, C_INK);
+    DrawCircleV({ x + 6.0f, y + 24.0f }, 2.0f, Color{ 255, 125, 141, 230 });
+    DrawCircleV({ x + 30.0f, y + 24.0f }, 2.0f, Color{ 255, 125, 141, 230 });
+
+    if (damaged) {
+        DrawCircleLines(static_cast<int>(x + PLAYER_W * 0.5f),
+                        static_cast<int>(y + PLAYER_H * 0.5f),
+                        31.0f + std::sin(gameClock * 45.0f) * 2.0f,
+                        Color{ 255, 99, 116, 245 });
+        DrawText("HIT", static_cast<int>(x + 2.0f), static_cast<int>(y - 19.0f),
+                 14, Color{ 255, 225, 224, 255 });
+    }
 }
 
 void DrawGoal() {
@@ -727,18 +789,49 @@ void DrawScoreNotice() {
              static_cast<int>(y), 20, Color{ 255, 232, 133, alpha });
 }
 
+void DrawImpactEffect() {
+    if (impactTimer <= 0.0f) return;
+    const float age = 0.42f - impactTimer;
+    const float radius = 10.0f + age * 210.0f;
+    const unsigned char alpha = static_cast<unsigned char>(
+        255.0f * std::clamp(impactTimer / 0.12f, 0.0f, 1.0f));
+    DrawCircleLines(static_cast<int>(impactScreenPos.x),
+                    static_cast<int>(impactScreenPos.y), radius,
+                    Color{ 255, 92, 116, alpha });
+    DrawCircleLines(static_cast<int>(impactScreenPos.x),
+                    static_cast<int>(impactScreenPos.y), radius * 0.62f,
+                    Color{ 255, 207, 151, alpha });
+    for (int i = 0; i < 8; ++i) {
+        const float a = i * (PI / 4.0f) + age * 3.0f;
+        const Vector2 from = { impactScreenPos.x + std::cos(a) * (radius * 0.55f),
+                               impactScreenPos.y + std::sin(a) * (radius * 0.55f) };
+        const Vector2 to = { impactScreenPos.x + std::cos(a) * (radius * 0.88f),
+                             impactScreenPos.y + std::sin(a) * (radius * 0.88f) };
+        DrawLineEx(from, to, 3.0f, Color{ 255, 222, 168, alpha });
+    }
+}
+
 void DrawDamageFeedback() {
     if (damageNoticeTimer <= 0.0f) return;
-    const float fade = std::clamp(damageNoticeTimer / 0.28f, 0.0f, 1.0f);
-    const unsigned char alpha = static_cast<unsigned char>(235.0f * fade);
-    DrawRectangleRounded({ 334, 86, 292, 66 }, 0.20f, 10,
-                         Color{ 66, 22, 44, static_cast<unsigned char>(210.0f * fade) });
-    DrawRectangleRoundedLinesEx({ 334, 86, 292, 66 }, 0.20f, 10, 2.0f,
-                                Color{ 255, 128, 142, alpha });
-    const char* message = pendingGameOver ? "FINAL HIT!" : "OUCH!  -1 LIFE";
-    DrawText(message, 354, 98, 24, Color{ 255, 151, 160, alpha });
-    DrawText(pendingGameOver ? "GAME OVER" : "RESPAWNING...",
-             355, 126, 12, C_WHITE_90);
+    const float fade = std::clamp(damageNoticeTimer / 0.24f, 0.0f, 1.0f);
+    const unsigned char alpha = static_cast<unsigned char>(250.0f * fade);
+    const float edge = std::clamp(damageNoticeTimer / 0.48f, 0.0f, 1.0f);
+    const unsigned char edgeAlpha = static_cast<unsigned char>(85.0f * edge);
+    DrawRectangle(0, 0, VIEW_W, 12, Color{ 255, 50, 83, edgeAlpha });
+    DrawRectangle(0, VIEW_H - 12, VIEW_W, 12, Color{ 255, 50, 83, edgeAlpha });
+    DrawRectangle(0, 0, 12, VIEW_H, Color{ 255, 50, 83, edgeAlpha });
+    DrawRectangle(VIEW_W - 12, 0, 12, VIEW_H, Color{ 255, 50, 83, edgeAlpha });
+    DrawRectangleRounded({ 304, 88, 352, 78 }, 0.18f, 12,
+                         Color{ 60, 15, 34, static_cast<unsigned char>(235.0f * fade) });
+    DrawRectangleRoundedLinesEx({ 304, 88, 352, 78 }, 0.18f, 12, 3.0f,
+                                Color{ 255, 90, 117, alpha });
+    DrawTriangle({ 329, 105 }, { 351, 145 }, { 307, 145 },
+                 Color{ 255, 91, 110, alpha });
+    DrawText("!", 324, 113, 25, Color{ 54, 18, 33, 255 });
+    DrawText(pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE",
+             365, 101, 24, Color{ 255, 164, 173, alpha });
+    DrawText(pendingGameOver ? "No lives left" : "Knocked back - respawning",
+             366, 133, 13, C_WHITE_90);
 }
 
 void DrawHud() {
@@ -765,6 +858,7 @@ void DrawGame() {
     for (const auto& c : coins) DrawCoin(c);
     for (const auto& e : enemies) DrawEnemy(e);
     DrawGoal();
+    DrawImpactEffect();
     DrawPlayer();
     DrawParticles();
     DrawScoreNotice();
@@ -903,9 +997,9 @@ int main() {
         ClearBackground(Color{ 6, 12, 25, 255 });
         const Rectangle source = { 0.0f, 0.0f, static_cast<float>(canvas.texture.width),
                                    -static_cast<float>(canvas.texture.height) };
-        const float shake = screenShakeTimer > 0.0f ? screenShakeTimer * 8.0f : 0.0f;
-        const float shakeX = shake > 0.0f ? std::sin(gameClock * 91.0f) * shake : 0.0f;
-        const float shakeY = shake > 0.0f ? std::cos(gameClock * 107.0f) * shake : 0.0f;
+        const float shake = screenShakeTimer > 0.0f ? screenShakeTimer * 11.0f : 0.0f;
+        const float shakeX = shake > 0.0f ? std::sin(gameClock * 91.0f) * shake * viewScale : 0.0f;
+        const float shakeY = shake > 0.0f ? std::cos(gameClock * 107.0f) * shake * viewScale : 0.0f;
         const Rectangle dest = { viewOffsetX + shakeX, viewOffsetY + shakeY,
                                  VIEW_W * viewScale, VIEW_H * viewScale };
         DrawTexturePro(canvas.texture, source, dest, { 0, 0 }, 0.0f, WHITE);
