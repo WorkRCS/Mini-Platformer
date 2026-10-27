@@ -224,12 +224,18 @@ Sound MakeTone(float frequency, float duration, float volume, bool noisy = false
     UnloadWave(wave);
     return sound;
 }
-void LoadRealSound(Sound& target, const char* path) {
-    if (!FileExists(path)) return;
-    Sound replacement = LoadSound(path);
-    if (replacement.frameCount == 0) return;
-    if (target.frameCount > 0) UnloadSound(target);
-    target = replacement;
+void LoadRealSound(Sound& target, const char* basePath) {
+    const char* extensions[] = { ".wav", ".ogg", ".mp3", ".flac" };
+    for (const char* extension : extensions) {
+        const std::string path = std::string(basePath) + extension;
+        if (!FileExists(path.c_str())) continue;
+        Sound replacement = LoadSound(path.c_str());
+        if (replacement.frameCount == 0) continue;
+        if (target.frameCount > 0) UnloadSound(target);
+        target = replacement;
+        TraceLog(LOG_INFO, "Loaded game sound: %s", path.c_str());
+        return;
+    }
 }
 
 Sound MakeMusic() {
