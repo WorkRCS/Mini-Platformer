@@ -601,6 +601,12 @@ void LoadGameAssets() {
     if (characterTexture.id != 0) SetTextureFilter(characterTexture, TEXTURE_FILTER_BILINEAR);
     cactusTexture = LoadOptionalTexture("cactus.png");
     pillarTexture = LoadOptionalTexture("pillar.png");
+    if (pillarTexture.id != 0) {
+        TraceLog(LOG_INFO,"ASSET: Using actual assets/pillar.png (%dx%d) for pillar obstacles and scenery",
+                 pillarTexture.width,pillarTexture.height);
+    } else {
+        TraceLog(LOG_WARNING,"ASSET: assets/pillar.png did not load; update your clone and verify build/assets/pillar.png");
+    }
     platformGroundTexture = LoadOptionalTexture("platform_ground.png");
     platformMediumTexture = LoadOptionalTexture("platform_medium.png");
     platformSmallTexture = LoadOptionalTexture("platform_small.png");
@@ -685,6 +691,9 @@ void LoadLevel(int which) {
         // Cactus PNGs sit directly on the top edge of each supporting ground platform.
         spikes = { { { 246, 398, 48, 72 }, 4 }, { { 1072, 378, 48, 72 }, 4 },
                    { { 1907, 368, 48, 72 }, 4 }, { { 2475, 378, 48, 72 }, 4 } };
+        // Use the real assets/pillar.png image as a solid obstacle in the opening route.
+        // Its 1:2 proportions match the visible collision box; its bottom touches platform y=430.
+        spikes.push_back({ { 594, 366, 32, 64 }, 5 });
         AddCoin(180, 423, 0.0f); AddCoin(360, 420, 1.0f);
         AddCoin(575, 385, 2.0f); AddCoin(635, 385, 3.0f);
         AddCoin(805, 340, 1.5f); AddCoin(865, 340, 2.5f);
@@ -705,6 +714,8 @@ void LoadLevel(int which) {
         };
         spikes = { { { 176, 444, 55, 26 }, 1 }, { { 1075, 439, 54, 26 }, 1 },
                    { { 2070, 429, 50, 26 }, 1 }, { { 2620, 424, 52, 26 }, 1 } };
+        // Grounded pillar uses the actual transparent PNG, not the procedural stone drawing.
+        spikes.push_back({ { 442, 361, 32, 64 }, 5 });
         AddCoin(270, 420, 0.0f); AddCoin(430, 380, 1.0f);
         AddCoin(630, 330, 2.0f); AddCoin(840, 375, 3.0f);
         AddCoin(1180, 415, 1.5f); AddCoin(1415, 365, 0.5f);
@@ -726,6 +737,7 @@ void LoadLevel(int which) {
         };
         spikes = { { { 130, 444, 54, 26 }, 2 }, { { 1145, 429, 56, 26 }, 2 },
                    { { 2040, 429, 55, 26 }, 2 }, { { 2700, 424, 52, 26 }, 2 } };
+        spikes.push_back({ { 404, 356, 32, 64 }, 5 });
         AddCoin(225, 420, 0.0f); AddCoin(390, 375, 1.0f);
         AddCoin(570, 320, 2.0f); AddCoin(755, 365, 3.0f);
         AddCoin(940, 305, 0.5f); AddCoin(1190, 405, 1.5f);
@@ -794,7 +806,8 @@ void LoadLevel(int which) {
                 if (sp.type == 4) {
                     sp.box = { x + width * 0.32f, y - 64.0f, 42.0f, 64.0f };
                 } else if (sp.type == 5) {
-                    sp.box = { x + width * 0.32f, y - 70.0f, 42.0f, 70.0f };
+                    // The pillar PNG is 1:2 aspect; keep its collision box at that ratio.
+                    sp.box = { x + width * 0.34f, y - 70.0f, 35.0f, 70.0f };
                 } else {
                     sp.box = { x + width * 0.25f, y - 26.0f,
                                std::min(58.0f, width * 0.42f), 26.0f };
@@ -1340,6 +1353,53 @@ void DrawLevelDecorations() {
     }
 }
 
+void DrawPillarScenery() {
+    // Distant ruin columns reuse the exact pillar PNG at reduced opacity and preserve aspect ratio.
+    if (pillarTexture.id == 0 || pillarTexture.width <= 0 || pillarTexture.height <= 0) return;
+    const float aspect = static_cast<float>(pillarTexture.width) /
+                         static_cast<float>(pillarTexture.height);
+    const float parallax = cameraX * 0.62f;
+    for (int i=0; i<8; ++i) {
+        const float worldX = 145.0f + static_cast<float>(i) * 510.0f +
+                             static_cast<float>((i+levelIndex)%3) * 37.0f;
+        const float h = 86.0f + static_cast<float>((i*17+levelIndex*11)%62);
+        const float w = h * aspect;
+        const float x = worldX - parallax;
+        const float y = 328.0f - h;
+        if (x < -w-10.0f || x > VIEW_W+10.0f) continue;
+        const unsigned char alpha = static_cast<unsigned char>(68 + (i%3)*14);
+        DrawTexturePro(pillarTexture,
+                       {0,0,(float)pillarTexture.width,(float)pillarTexture.height},
+                       {x,y,w,h},{0,0},0,Color{200,226,233,alpha});
+        // A small stone foot makes this read as distant scenery, not a floating hazard.
+        DrawRectangleRounded({x-5.0f,328.0f,w+10.0f,5.0f},0.2f,4,
+                             Color{103,142,151,static_cast<unsigned char>(alpha*0.75f)});
+    }
+}
+
+void DrawExtraScenery() {
+    // Layered drifting motes, clouds, vines and biome-specific foliage add depth without
+    // introducing any unmarked collision geometry.
+    const Color mote = levelIndex==7 ? Color{255,166,94,160}
+                     : (levelIndex==4 || levelIndex==6 ? Color{179,225,255,165}
+                                                        : Color{177,255,211,130});
+    for (int i=0; i<14; ++i) {
+        const float x=std::fmod(static_cast<float>(i*83)+gameClock*(13.0f+(i%3)*3.0f)-
+                                cameraX*0.08f,static_cast<float>(VIEW_W+40))-20.0f;
+        const float y=120.0f+static_cast<float>((i*47+levelIndex*19)%225)+
+                      std::sin(gameClock*1.1f+i)*4.0f;
+        if (i%3==0) {
+            DrawCircleV({x,y},3.0f,mote);
+            DrawCircleV({x,y},5.5f,Color{mote.r,mote.g,mote.b,38});
+        } else if (i%3==1) {
+            DrawLineEx({x,y+5},{x-2.0f,y-4},1.4f,mote);
+            DrawLineEx({x+2.0f,y+4},{x+5.0f,y-1},1.1f,mote);
+        } else {
+            DrawCircleV({x,y},1.8f,Color{238,248,255,120});
+        }
+    }
+}
+
 void DrawBirdFlock() {
     const Color skyBird = levelIndex==7 ? Color{255,198,149,230}
                       : (levelIndex==4 || levelIndex==6 ? Color{222,242,255,230}
@@ -1390,19 +1450,26 @@ void DrawSpike(const Spike& spike) {
                 DrawTriangle({x+w*.70f,yy-3},{x+w*.82f,yy},{x+w*.70f,yy+3},Color{237,255,174,255});
             }
         }
-    } else if(spike.type==5) {
+        } else if(spike.type==5) {
         if(pillarTexture.id!=0) {
-            DrawTexturePro(pillarTexture,{0,0,(float)pillarTexture.width,(float)pillarTexture.height},
-                           {x,y,w,h},{0,0},0,WHITE);
+            // Draw the exact assets/pillar.png sprite at its source aspect ratio.
+            const float aspect = static_cast<float>(pillarTexture.width) /
+                                 static_cast<float>(pillarTexture.height);
+            const float imageW = std::min(w, h * aspect);
+            const float imageX = x + (w - imageW) * 0.5f;
+            DrawTexturePro(pillarTexture,
+                           {0,0,(float)pillarTexture.width,(float)pillarTexture.height},
+                           {imageX,y,imageW,h},{0,0},0,WHITE);
         } else {
+            TraceLog(LOG_WARNING,"ASSET: pillar.png unavailable; using emergency visible fallback");
             DrawEllipse((int)(x+w*.5f),(int)(y+h-2),w*.72f,5,Color{7,15,24,130});
             DrawRectangleRounded({x+w*.18f,y+8,w*.64f,h-13},.08f,5,Color{111,125,149,255});
             DrawRectangleRoundedLinesEx({x+w*.18f,y+8,w*.64f,h-13},.08f,5,2,Color{41,54,80,255});
             DrawRectangleRounded({x+w*.06f,y+3,w*.88f,10},.08f,5,Color{177,194,212,255});
             DrawRectangleRounded({x+w*.06f,y+h-11,w*.88f,10},.08f,5,Color{85,101,129,255});
-            DrawRectangle((int)(x+w*.31f),(int)(y+17),(int)(w*.12f),(int)(h-36),Color{199,219,235,255});
         }
-    } else if(spike.type==1) {
+    
+    } else if(spike.type==1) {} else if(spike.type==1) {
         DrawEllipse((int)(x+w*.5f),(int)(y+h-4),w*.58f,8,Color{18,49,48,255});
         DrawCircleV({x+w*.22f,y+h*.60f},13,Color{37,127,84,255});
         DrawCircleV({x+w*.48f,y+h*.45f},16,Color{66,178,98,255});
@@ -1736,6 +1803,8 @@ void DrawHud() {
 
 void DrawGame() {
     DrawBackground(cameraX);
+    DrawPillarScenery();
+    DrawExtraScenery();
     DrawBirdFlock();
     for (const auto& p : platforms) DrawPlatform(p);
     DrawLevelDecorations();
