@@ -421,8 +421,9 @@ Model LoadModelFromPath(const std::string& requestedPath) {
     Model model = LoadModel(path.c_str());
     if (model.meshCount <= 0 || model.meshes == nullptr) {
         TraceLog(LOG_WARNING, "3D model failed to load or contains no meshes: %s", path.c_str());
-        if (model.meshes != nullptr || model.materials != nullptr || model.materialCount > 0)
-            UnloadModel(model);
+        // UnloadModel iterates the mesh array, so only call it when that
+        // array exists (malformed files can return an empty model).
+        if (model.meshes != nullptr) UnloadModel(model);
         return Model{};
     }
 
