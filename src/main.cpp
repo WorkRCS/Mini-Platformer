@@ -85,6 +85,9 @@ float cameraX = 0.0f;
 float gameClock = 0.0f;
 float hurtFlash = 0.0f;
 float damageNoticeTimer = 0.0f;
+float scoreNoticeTimer = 0.0f;
+int scoreNoticeValue = 0;
+Vector2 scoreNoticePos { 0.0f, 0.0f };
 float respawnTimer = 0.0f;
 float screenShakeTimer = 0.0f;
 bool pendingGameOver = false;
@@ -318,6 +321,8 @@ void LoadLevel(int which) {
     cameraX = 0.0f;
     hurtFlash = 0.0f;
     damageNoticeTimer = 0.0f;
+    scoreNoticeTimer = 0.0f;
+    scoreNoticeValue = 0;
     respawnTimer = 0.0f;
     screenShakeTimer = 0.0f;
     pendingGameOver = false;
@@ -371,6 +376,7 @@ void UpdateGame(float dt) {
     gameClock += dt;
     hurtFlash = std::max(0.0f, hurtFlash - dt);
     damageNoticeTimer = std::max(0.0f, damageNoticeTimer - dt);
+    scoreNoticeTimer = std::max(0.0f, scoreNoticeTimer - dt);
     screenShakeTimer = std::max(0.0f, screenShakeTimer - dt);
     UpdateParticles(dt);
 
@@ -471,6 +477,9 @@ void UpdateGame(float dt) {
             coin.taken = true;
             score += 10;
             highScore = std::max(highScore, score);
+            scoreNoticeValue = 10;
+            scoreNoticePos = coin.center;
+            scoreNoticeTimer = 0.72f;
             SpawnParticles(coin.center, C_GOLD, 14);
             PlayFx(sfxCoin);
         }
@@ -500,6 +509,9 @@ void UpdateGame(float dt) {
                 SpawnParticles({ e.box.x + 15.0f, e.box.y + 10.0f }, C_CORAL, 18);
                 score += 25;
                 highScore = std::max(highScore, score);
+                scoreNoticeValue = 25;
+                scoreNoticePos = { e.box.x + e.box.width * 0.5f, e.box.y };
+                scoreNoticeTimer = 0.78f;
                 PlayFx(sfxStomp);
             } else {
                 TakeHit();
@@ -509,6 +521,8 @@ void UpdateGame(float dt) {
     }
 
     if (player.pos.y > VIEW_H + 110.0f && screen == Screen::Playing) {
+        // Bring the fall impact into view so the life loss is never invisible off-screen.
+        player.pos.y = VIEW_H - PLAYER_H - 18.0f;
         TakeHit();
         return;
     }
@@ -522,7 +536,6 @@ void UpdateGame(float dt) {
         PlayFx(sfxLevel);
         if (levelIndex < 2) {
             LoadLevel(levelIndex + 1);
-            PlayFx(sfxLevel);
         } else {
             screen = Screen::Victory;
         }
@@ -703,6 +716,17 @@ void DrawHeart(float x, float y, Color c) {
                  { x, y + 12.0f }, c);
 }
 
+void DrawScoreNotice() {
+    if (scoreNoticeTimer <= 0.0f) return;
+    const float elapsed = 0.72f - scoreNoticeTimer;
+    const float x = scoreNoticePos.x - cameraX;
+    const float y = scoreNoticePos.y - 18.0f - elapsed * 40.0f;
+    const unsigned char alpha = static_cast<unsigned char>(
+        255.0f * std::clamp(scoreNoticeTimer / 0.20f, 0.0f, 1.0f));
+    DrawText(TextFormat("+%d", scoreNoticeValue), static_cast<int>(x - 8.0f),
+             static_cast<int>(y), 20, Color{ 255, 232, 133, alpha });
+}
+
 void DrawDamageFeedback() {
     if (damageNoticeTimer <= 0.0f) return;
     const float fade = std::clamp(damageNoticeTimer / 0.28f, 0.0f, 1.0f);
@@ -743,6 +767,7 @@ void DrawGame() {
     DrawGoal();
     DrawPlayer();
     DrawParticles();
+    DrawScoreNotice();
     DrawHud();
     DrawTouchControls();
     DrawDamageFeedback();
