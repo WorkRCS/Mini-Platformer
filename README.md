@@ -43,7 +43,7 @@ cmake --build build
 ./build/TinyTrails.exe
 ```
 
-Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. If assets are downloaded after CMake has already configured the build folder, re-run the CMake configure command to copy the new assets into `build/assets/`.
+Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. Runtime assets are now copied beside the desktop executable after every build, so downloading models and running `cmake --build build` is enough; a CMake reconfigure is not required. Model-load logs identify the exact 3D files that were loaded and report when a procedural fallback is in use.
 
 ### Desktop controls
 

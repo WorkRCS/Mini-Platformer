@@ -56,7 +56,15 @@ else()
     endif()
 endif()
 
-# Copy local art packs beside the desktop executable when present.
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_BINARY_DIR}")
+# Run on every build, even when the executable is already up-to-date.
+# This picks up GLB files downloaded after the build folder was configured.
+if(NOT ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    add_custom_target(copy_runtime_assets ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "${CMAKE_BINARY_DIR}/assets"
+        COMMENT "Copying runtime assets beside TinyTrails"
+        VERBATIM
+    )
+    add_dependencies(TinyTrails copy_runtime_assets)
 endif()
