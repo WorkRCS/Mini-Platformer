@@ -677,7 +677,7 @@ void DrawVictoryScreen() {
 } // namespace
 
 int main() {
-#if !defined(PLATFORM_ANDROID) && !defined(PLATFORM_WEB)
+#if !defined(__ANDROID__) && !defined(PLATFORM_ANDROID) && !defined(PLATFORM_WEB)
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
 #else
     SetConfigFlags(FLAG_VSYNC_HINT);
