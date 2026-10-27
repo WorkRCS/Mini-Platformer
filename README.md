@@ -1,54 +1,79 @@
-# Wildbound: Boss Hunter — 3D Action Adventure Prototype
+# Wildbound: Boss Hunter — PC-first 3D Action Adventure
 
-The game is being reworked from the old 2D platformer into an offline, third-person, open-world monster-hunting adventure in C++ and raylib. The Android package ID remains `com.workrcs.tinytrails` so this prototype can install as an update to the existing local app, while the launcher label now says **Wildbound: Boss Hunter**.
+Wildbound is an offline, third-person monster-hunting adventure built with C++ and raylib. Development is **PC-first**: desktop movement, camera feel, missions, combat, enemy behavior, environment assets, and performance are the first target. Once the PC gameplay is stable, Android controls and performance will be polished as the next phase.
+
+The Android package ID remains `com.workrcs.tinytrails` for later compatibility with the already-installed app. The launcher title is now **Wildbound: Boss Hunter**.
 
 ## Current playable foundation
 
-- Third-person chase camera and 3D movement across four connected biome regions: Emerald Wilds, Golden Dunes, Frostbound Pass, and Ember Frontier
-- Keyboard controls plus on-screen mobile movement joystick, Jump, Attack, and special Blink buttons
-- Procedural player and monster meshes as a fallback, with a sword attack, area special ability, damage, defeat effects, particles, and rebirth/respawn feedback
-- Roaming enemy creatures with health and basic chase/attack AI
-- Four boss encounters with separate health pools, mission text, sequential unlocks, and a final victory state
-- Offline session progression, XP, health, generated sound effects, and generated looping background music; no backend/server is required. Persistent save-to-disk is a later milestone.
-- Optional loading of Kenney Nature Kit glTF/GLB trees and rocks plus optional WAV impact/UI effects, with procedural scenery and synthesized sound fallback when those files are not installed
+- A 3D third-person world spanning four connected regions: Emerald Wilds, Golden Dunes, Frostbound Pass, and Ember Frontier
+- Desktop-first controls: WASD / arrow keys to move, Space to jump, left click or J to attack, right click or K to use Blink, and Tab / P / Escape to pause
+- A resizable PC window, desktop HUD, mission callouts, player HP/XP, monster count, boss HP, and status messages
+- Procedural hero and creature meshes as fallback art; roaming enemies with basic chase/attack behavior
+- Four sequential boss encounters with separate health pools, mission text, unlock requirements, and a final victory state
+- Melee attacks, an area special ability, hit impact, particles, monster defeat effects, hurt feedback, and rebirth/respawn
+- Four biome palettes with procedural trees, rocks, crystals, trails, and boss altars
+- Synthesized sound effects and looping music as fallback, with optional loaded audio files
+- Optional Kenney Nature Kit glTF/GLB trees and rocks, loaded when the files are present
+- No backend/server or internet connection is required while playing
 
-**Important:** this is the first playable 3D foundation, not yet the final high-detail release. The current hero, creatures, and world props are procedural placeholder meshes. The next development pass is to integrate rigged character/monster GLB models and their animation clips, improve terrain/materials/lighting, add more mission types, and optimize frame time and memory for the target Android phone.
+**This is the first 3D gameplay foundation, not the final high-graphics release.** The player and monster shapes are currently procedural placeholder meshes, and their animations are procedural. Rigged hero/monster models with imported run/jump/attack clips, improved terrain and materials, additional mission objectives, richer boss patterns, save-to-disk progression, and detailed performance profiling are further PC milestones.
 
-## Get optional CC0 assets automatically
+## 1. Build and test the PC version first
 
-From the repository root in Windows PowerShell, run this once when you have an internet connection:
+### Windows — recommended workflow
+
+Install [MSYS2](https://www.msys2.org/) and open **MSYS2 UCRT64**. Install the build tools:
+
+```bash
+pacman -S --needed git mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+```
+
+From the repository root, optionally fetch selected free assets while online:
 
 ```powershell
 .\scripts\fetch-openworld-assets.ps1
 ```
 
-The script looks up the download links from the official Kenney asset pages, downloads the Nature Kit, RPG Audio, Impact Sounds, and Interface Sounds packs, and copies selected GLB/glTF and WAV files into the game's `assets/` tree. It does not require you to browse and download each file by hand. If a pack or format changes, the script reports a warning and the game uses its built-in fallback instead. The complete source packs are cached under your Windows temp directory rather than copied wholesale into the APK.
+Then run the following in the MSYS2 UCRT64 terminal:
 
-The publisher pages identify the Kenney packs as CC0. Review the individual source page again before releasing a public/commercial build:
-- [Kenney Nature Kit](https://kenney.nl/assets/nature-kit)
-- [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio)
-- [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds)
-- [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds)
-- [Quaternius Bestiary — Dungeon Monsters Kit](https://quaternius.com/packs/bestiarydungeonmonsterskit.html)
-- [Quaternius Universal Animation Library 2](https://quaternius.com/packs/universalanimationlibrary2.html)
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/TinyTrails.exe
+```
 
-Quaternius packs are not downloaded automatically by the current script. Their official page offers the free portion of the packs and marks the listed content as usable in personal and commercial projects; only add a specific download after confirming the pack's licence and format. FBX is not directly loaded by this raylib build; use GLB/glTF or export through Blender.
+Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. If assets are downloaded after CMake has already configured the build folder, re-run the CMake configure command to copy the new assets into `build/assets/`.
 
-## Controls
+### Desktop controls
 
-| Action | Desktop | Android touch |
+| Action | Keyboard | Mouse |
 |---|---|---|
-| Move | WASD / arrow keys | Left movement pad |
-| Jump | Space | JUMP |
-| Attack | J | ATTACK |
-| Special Blink/AOE | K | BLINK |
-| Pause / resume | Tab, P, or Esc | Android back/escape behavior or desktop pause controls |
+| Move | WASD or arrow keys | — |
+| Jump | Space | — |
+| Attack | J | Left click |
+| Blink special | K | Right click |
+| Pause / resume | Tab, P, or Esc | — |
 
-## Android build
+### PC asset setup
 
-Open the `android/` folder in Android Studio, sync Gradle, and build the debug APK. The existing SDK/NDK/CMake versions and ARM64-only ABI configuration have been retained.
+From Windows PowerShell, the helper script can look up official download links, fetch packs, extract them in a temporary folder, and copy only selected runtime files into `assets/`. You do not have to browse and download each chosen file manually. It is optional; the game keeps procedural environment and synthesized sound fallbacks if downloads or expected file formats are unavailable.
 
-PowerShell from the repository root:
+The script currently attempts to use:
+- [Kenney Nature Kit](https://kenney.nl/assets/nature-kit) — CC0 3D nature models
+- [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) — CC0 combat/foley sounds
+- [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) — CC0 impact sounds
+- [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) — CC0 UI sounds
+
+Kenney says the assets on its asset pages are public-domain/CC0 and may be used in commercial projects; see its [licence FAQ](https://kenney.nl/support). Only the selected runtime assets are copied into the project. Recheck pack licences before release. Quaternius/Mixamo character and animation integration is not completed yet. For this raylib path, export rigged models to glTF/GLB using Blender before attempting runtime use.
+
+GitHub Actions also attempts the asset fetch before the desktop CMake configure step, then builds a Windows desktop executable. If asset downloading fails, the fallback build can still proceed.
+
+## 2. Android comes after the PC gameplay milestone
+
+The Android project retains the known SDK/NDK/CMake setup and ARM64-only target. Once the PC version is tested and approved, the next phase is to refine mobile touch controls, import/optimize assets, and validate performance on the target phone.
+
+Android Studio project files are in `android/`. To build from PowerShell:
 
 ```powershell
 cd android
@@ -58,7 +83,7 @@ cd android
 APK output:
 `android/app/build/outputs/apk/debug/app-debug.apk`
 
-Install on a connected ARM64 Android phone (replace the device serial only if more than one device is connected):
+Install on a connected ARM64 Android phone:
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
@@ -67,26 +92,15 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 & $adb shell monkey -p com.workrcs.tinytrails 1
 ```
 
-The procedural fallback means the game can still start if you skip the asset-download step. GitHub Actions also tries to fetch these optional assets before creating its APK artifact; that fetch is allowed to fail without blocking the fallback build.
-
-## Desktop build (MSYS2 UCRT64)
-
-Install dependencies in MSYS2 UCRT64:
-
-```bash
-pacman -S --needed git mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-./build/TinyTrails.exe
-```
-
 ## Project layout
 
 ```text
 src/adventure3d.cpp               # active 3D prototype
-src/main.cpp                      # preserved 2D legacy reference
+src/main.cpp                      # preserved 2D legacy source
 scripts/fetch-openworld-assets.ps1
 CMakeLists.txt
+.github/workflows/build.yml       # PC build and optional asset setup
+.github/workflows/android-build.yml
 android/app/build.gradle
 android/app/src/main/AndroidManifest.xml
 assets/                            # optional local runtime assets
@@ -94,4 +108,4 @@ assets/                            # optional local runtime assets
 
 ## Asset and licensing policy
 
-Only download assets from their original publisher pages and verify their licences. Never bulk-mirror an asset library into a public repository or APK when the licence forbids redistribution of the source assets. The project only copies a small number of selected runtime files; keep each source pack's own licence and attribution requirements with the release notes if applicable.
+Fetch only from original publishers and verify the relevant licence before bundling. Do not bulk-mirror full asset libraries into the public repository or APK unless permitted by the licence. The current scene uses fallback meshes when imported files are absent, so the project remains buildable without downloading third-party content.
