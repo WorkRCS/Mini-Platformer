@@ -7,7 +7,7 @@ A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the an
 - Redesigned main menu with Play, three difficulty settings (Easy / Medium / Hard), and controls
 - Ten named stages: Waterfall Trail, River Crossing, Ancient Ruins, Misty Woods, Crystal Caves, Sandstone Rise, Frostline Ridge, Ember Path, Moonlit Bridges, and The Final Ascent
 - Longer routes with stage-specific layouts, themes, moving platforms, thorn bushes, spikes, crystal hazards, and ember hazards
-- Three short levels, platforms, coins, spikes, patrolling enemies, and a goal flag
+- Platforms, coins, patrolling enemies, visible hazards, and a goal flag across all ten stages
 - Score popups, heart-based lives, visible damage/respawn feedback, pause, restart, game-over, and victory screens
 - Difficulty-scaled movement speed, enemy speed, and hazard density; difficulty remains separate from level progression
 - Keyboard, gamepad, and on-screen touch controls
@@ -27,11 +27,11 @@ A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the an
 
 Open **MSYS2 UCRT64** (not PowerShell) and install the dependencies:
 
-\`\`\`bash
+```bash
 pacman -S --needed git mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
-\`\`\`
+```
 
-Download the `TinyTrails_Assets.zip` asset pack supplied with the project instructions, then extract it into the repository root. The paths should be `assets/background.gif` and `assets/character_atlas.png`. The animated background and character animation won't load until these files are present.
+Both visual assets are already tracked in `assets/`, so a fresh clone contains them. If an older clone reports `Failed to open file`, run `git pull origin main` first, then re-run the CMake configure command so the assets are copied to `build/assets/`.
 
 Clone the project and build it:
 
@@ -53,7 +53,7 @@ You can also run \`bash build-msys2.sh\` from the project root after installing 
 
 The `.vscode/c_cpp_properties.json` file configures IntelliSense for the standard MSYS2 path `C:/msys64/ucrt64/include`. Both art files (`assets/background.gif` and `assets/character_atlas.png`) are included in this repository. If your old clone shows `Failed to open file`, pull the latest changes and reconfigure CMake before launching. Open the **repository root folder** in VS Code (not only `src/main.cpp`), then run **Developer: Reload Window** from the Command Palette.
 
-If MSYS2 is installed somewhere other than `C:\\msys64`, update `compilerPath` and `includePath` in `.vscode/c_cpp_properties.json` to that installation. The red underline is an IntelliSense configuration warning; the CMake build uses raylib's package configuration.
+If MSYS2 is installed somewhere other than `C:\msys64`, update `compilerPath` and `includePath` in `.vscode/c_cpp_properties.json` to that installation. The red underline is an IntelliSense configuration warning; the CMake build uses raylib's package configuration.
 
 ## Troubleshooting gameplay feedback
 
@@ -68,7 +68,7 @@ The same game source includes touch controls and raylib gamepad input. Android S
 
 ## Project layout
 
-\`\`\`text
+```text
 Mini-Platformer/
 ├── src/main.cpp
 ├── CMakeLists.txt
