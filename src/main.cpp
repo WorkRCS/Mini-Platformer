@@ -306,20 +306,38 @@ void UnloadReadableFont() {
     customUiFont = false;
 }
 
+int EffectiveUiSize(int requestedSize) {
+    // Keep small labels readable after the 960x540 canvas is fitted to the window.
+    // A 12px physical minimum avoids 8-10px text on smaller desktop windows.
+    const float safeScale = std::max(0.5f, viewScale);
+    const int physicalMinimum = static_cast<int>(std::ceil(12.5f / safeScale));
+    return std::max(requestedSize, physicalMinimum);
+}
+
 void DrawUIText(const char* text, int x, int y, int size, Color color) {
-    if (text == nullptr) return;
+    if (text == nullptr || *text == '\0') return;
     if (uiFont.texture.id == 0) uiFont = GetFontDefault();
-    DrawTextEx(uiFont, text, { static_cast<float>(x), static_cast<float>(y) },
-               static_cast<float>(size),
-               std::max(0.5f, static_cast<float>(size) * 0.015f), color);
+
+    const int renderSize = EffectiveUiSize(size);
+    const float spacing = std::max(0.45f, static_cast<float>(renderSize) * 0.012f);
+    const Vector2 pos = { static_cast<float>(x), static_cast<float>(y) };
+
+    // A restrained shadow preserves contrast over both bright water/sky and dark panels.
+    Color shadow = { 4, 12, 24,
+        static_cast<unsigned char>(static_cast<float>(color.a) * 0.72f) };
+    DrawTextEx(uiFont, text, { pos.x + 1.0f, pos.y + 1.0f },
+               static_cast<float>(renderSize), spacing, shadow);
+    DrawTextEx(uiFont, text, pos, static_cast<float>(renderSize), spacing, color);
 }
 
 int MeasureUIText(const char* text, int size) {
-    if (text == nullptr) return 0;
+    if (text == nullptr || *text == '\0') return 0;
     if (uiFont.texture.id == 0) uiFont = GetFontDefault();
+
+    const int renderSize = EffectiveUiSize(size);
     const Vector2 measured = MeasureTextEx(
-        uiFont, text, static_cast<float>(size),
-        std::max(0.5f, static_cast<float>(size) * 0.015f));
+        uiFont, text, static_cast<float>(renderSize),
+        std::max(0.45f, static_cast<float>(renderSize) * 0.012f));
     return static_cast<int>(std::ceil(measured.x));
 }
 
@@ -1238,13 +1256,15 @@ void DrawDamageFeedback() {
 }
 
 void DrawHud() {
-    DrawRectangleRounded({ 16, 15, 288, 58 }, 0.18f, 8, Color{ 13, 26, 45, 205 });
-    DrawUIText(TextFormat("LEVEL %02d / %02d", levelIndex + 1, LEVEL_COUNT), 30, 21, 13,
-             Color{ 159, 190, 220, 255 });
-    DrawUIText(LevelName(levelIndex), 30, 36, 10,
-             Color{ 159, 216, 208, 255 });
-    DrawUIText(TextFormat("SCORE %04d", score), 30, 48, 18, C_GOLD);
-    DrawUIText("LIVES", 193, 23, 12, Color{ 159, 190, 220, 255 });
+    DrawRectangleRounded({ 16, 13, 300, 79 }, 0.14f, 8, Color{ 13, 26, 45, 222 });
+    DrawRectangleRoundedLinesEx({ 16, 13, 300, 79 }, 0.14f, 8, 1.0f,
+                                Color{ 86, 125, 157, 190 });
+    DrawUIText(TextFormat("LEVEL %02d / %02d", levelIndex + 1, LEVEL_COUNT), 30, 19, 13,
+             Color{ 177, 205, 229, 255 });
+    DrawUIText(LevelName(levelIndex), 30, 36, 11,
+             Color{ 159, 233, 213, 255 });
+    DrawUIText(TextFormat("SCORE %04d", score), 30, 54, 18, C_GOLD);
+    DrawUIText("LIVES", 193, 21, 12, Color{ 177, 205, 229, 255 });
     for (int i = 0; i < StartingLives(); ++i) {
         const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
         DrawHeart(204.0f + i * 17.0f, 50.0f, heart);
@@ -1314,7 +1334,7 @@ void DrawTitle() {
                          Color{ 12, 26, 48, 165 });
     DrawRectangleRoundedLinesEx({ 42, 42, 455, 456 }, 0.06f, 12, 1.5f,
                                 Color{ 88, 136, 164, 150 });
-    DrawRectangleRounded({ 72, 71, 205, 28 }, 0.45f, 8,
+    DrawRectangleRounded({ 72, 71, 252, 28 }, 0.45f, 8,
                          Color{ 35, 96, 91, 220 });
     DrawUIText("A TINY PLATFORM ADVENTURE", 84, 79, 13, C_MINT);
     DrawUIText("TINY", 75, 120, 54, C_WHITE_90);
@@ -1362,9 +1382,10 @@ void DrawTitle() {
 
     DrawRectangleRounded({ 570, 372, 305, 71 }, 0.12f, 8,
                          Color{ 22, 42, 64, 255 });
-    DrawUIText("BEST RUN", 590, 385, 11, Color{ 151, 183, 207, 255 });
+    DrawUIText("BEST RUN", 590, 383, 12, Color{ 171, 198, 220, 255 });
     DrawUIText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
-    DrawUIText("Collect coins. Reach the flag.", 688, 402, 12, C_WHITE_90);
+    DrawUIText("Collect coins.", 688, 392, 12, C_WHITE_90);
+    DrawUIText("Reach the flag.", 688, 412, 12, C_WHITE_90);
     DrawUIText("ESC / P pauses during a run", 570, 460, 12,
              Color{ 153, 183, 207, 255 });
 }
@@ -1430,7 +1451,7 @@ int main() {
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(VIEW_W, VIEW_H, "Tiny Trails - Mini Platformer");
     SetTargetFPS(60);
-    SetWindowMinSize(800, 450);
+    SetWindowMinSize(VIEW_W, VIEW_H);
     LoadGameAssets();
     LoadReadableFont();
     InitGameAudio();
