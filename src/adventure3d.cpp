@@ -400,20 +400,25 @@ Model LoadOptionalModelStem(const char* stem) {
 void LoadOptionalNatureModels() {
     // User-installed Sketchfab GLBs take priority; existing Kenney models are fallbacks.
     natureTree = LoadOptionalModelStem("assets/3d/sketchfab_tree");
+    if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("assets/3d/sketchfab_tree_path.txt");
     if (natureTree.meshCount == 0) natureTree = LoadOptionalModelStem("assets/3d/world_tree");
     if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("assets/3d/world_tree_path.txt");
     treeModelReady = natureTree.meshCount > 0;
 
     natureRock = LoadOptionalModelStem("assets/3d/sketchfab_rock");
+    if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("assets/3d/sketchfab_rock_path.txt");
     if (natureRock.meshCount == 0) natureRock = LoadOptionalModelStem("assets/3d/world_rock");
     if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("assets/3d/world_rock_path.txt");
     rockModelReady = natureRock.meshCount > 0;
 
     sketchfabHeroModel = LoadOptionalModelStem("assets/3d/sketchfab_hero");
+    if (sketchfabHeroModel.meshCount == 0) sketchfabHeroModel = LoadModelFromManifest("assets/3d/sketchfab_hero_path.txt");
     sketchfabHeroReady = sketchfabHeroModel.meshCount > 0;
     sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/sketchfab_monster");
+    if (sketchfabMonsterModel.meshCount == 0) sketchfabMonsterModel = LoadModelFromManifest("assets/3d/sketchfab_monster_path.txt");
     sketchfabMonsterReady = sketchfabMonsterModel.meshCount > 0;
     sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss");
+    if (sketchfabBossModel.meshCount == 0) sketchfabBossModel = LoadModelFromManifest("assets/3d/sketchfab_boss_path.txt");
     sketchfabBossReady = sketchfabBossModel.meshCount > 0;
 }
 
