@@ -516,6 +516,9 @@ void LoadGameAssets() {
     // Crop transparent padding once at load time and preserve its real aspect ratio.
     Image characterImage = LoadImage(CharacterAssetPath());
     if (characterImage.data != nullptr) {
+        // Some exported "transparent" sprites are flattened onto near-black pixels.
+        // Clear only edge-connected matte pixels before cropping the transparent margins.
+        RemoveOpaqueBlackBorder(&characterImage);
         ImageAlphaCrop(&characterImage, 0.01f);
         characterTexture = LoadTextureFromImage(characterImage);
         TraceLog(LOG_INFO, "ASSET: Loaded single character image (%dx%d)",
