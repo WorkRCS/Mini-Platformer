@@ -1,6 +1,6 @@
 # Android build
 
-The Android project is configured for a landscape NativeActivity and packages the game's root `assets/` folder into the APK.
+The Android project is configured for a landscape NativeActivity and packages the game's root `assets/` folder into the APK. The debug APK currently targets `arm64-v8a` Android phones only to keep local test builds smaller and avoid compiling all three native architectures.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ Open PowerShell in the repository folder and run:
 
 ```powershell
 cd android
-.\gradlew.bat --no-daemon assembleDebug
+.\gradlew.bat assembleDebug
 ```
 
 On Linux/macOS:
@@ -25,7 +25,7 @@ On Linux/macOS:
 ```bash
 cd android
 chmod +x ./gradlew
-./gradlew --no-daemon assembleDebug
+./gradlew assembleDebug
 ```
 
 The output APK is:
