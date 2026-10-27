@@ -1,0 +1,9 @@
+/build/
+/cmake-build-*/
+/android/.gradle/
+/android/local.properties
+/android/app/build/
+*.exe
+*.dll
+*.apk
+*.aab
