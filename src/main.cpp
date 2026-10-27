@@ -25,7 +25,7 @@ const Color C_GOLD      = { 255, 211, 92, 255 };
 const Color C_CORAL     = { 255, 112, 125, 255 };
 const Color C_WHITE_90  = { 242, 247, 255, 235 };
 
-enum class Screen { Menu, Controls, Settings, Playing, Paused, GameOver, Victory };
+enum class Screen { Loading, Menu, Controls, Settings, Playing, Paused, GameOver, Victory };
 
 struct Platform {
     Rectangle box;
@@ -37,6 +37,7 @@ struct Platform {
 };
 struct Spike { Rectangle box; int type = 0; };
 struct Coin { Vector2 center; bool taken = false; float phase = 0.0f; };
+struct PowerUp { Vector2 center; int type = 0; bool taken = false; float phase = 0.0f; };
 struct Enemy {
     Rectangle box;
     float minX = 0.0f;
@@ -60,8 +61,10 @@ struct Player {
     int lives = 3;
 };
 
-Screen screen = Screen::Menu;
+Screen screen = Screen::Loading;
+float loadingTimer = 5.0f;
 RenderTexture2D canvas {};
+Texture2D appIconTexture {};
 Texture2D characterTexture {};
 Texture2D backgroundTexture {};
 Texture2D cactusTexture {};
@@ -92,6 +95,9 @@ float viewOffsetY = 0.0f;
 std::vector<Platform> platforms;
 std::vector<Spike> spikes;
 std::vector<Coin> coins;
+std::vector<PowerUp> powerUps;
+float magnetTimer = 0.0f;
+float bootsTimer = 0.0f;
 std::vector<Enemy> enemies;
 std::vector<Particle> particles;
 
@@ -102,7 +108,11 @@ Sound sfxStomp {};
 Sound sfxLevel {};
 Sound sfxMenu {};
 Sound sfxLand {};
+Sound sfxGameOver {};
+Sound sfxBackgroundMusic {};
 bool audioReady = false;
+bool musicEnabled = true;
+float musicVolume = 0.16f;
 Font uiFont {};
 bool customUiFont = false;
 
@@ -275,6 +285,16 @@ void PlayFx(Sound sound) {
     if (audioReady && sound.frameCount > 0) PlaySound(sound);
 }
 
+void UpdateBackgroundMusic() {
+    if (!audioReady || sfxBackgroundMusic.frameCount == 0) return;
+    SetSoundVolume(sfxBackgroundMusic,musicVolume);
+    if (!musicEnabled) {
+        if (IsSoundPlaying(sfxBackgroundMusic)) StopSound(sfxBackgroundMusic);
+        return;
+    }
+    if (!IsSoundPlaying(sfxBackgroundMusic)) PlaySound(sfxBackgroundMusic);
+}
+
 void InitGameAudio() {
     InitAudioDevice();
     audioReady = IsAudioDeviceReady();
@@ -288,6 +308,34 @@ void InitGameAudio() {
     sfxLevel = MakeTone(680.0f, 0.24f, 0.28f);
     sfxMenu = MakeTone(420.0f, 0.07f, 0.20f);
     sfxLand = MakeTone(135.0f, 0.11f, 0.22f, true);
+    sfxGameOver = MakeTone(94.0f, 0.72f, 0.62f, true);
+    // Soft layered chiptune, synthesized at runtime so it works on desktop and Android.
+    constexpr unsigned int sampleRate = 22050;
+    constexpr float musicDuration = 8.0f;
+    const unsigned int frames = static_cast<unsigned int>(sampleRate * musicDuration);
+    short* samples = static_cast<short*>(MemAlloc(frames * sizeof(short)));
+    if (samples != nullptr) {
+        const float melody[] = { 523.25f,659.25f,783.99f,659.25f,587.33f,698.46f,880.0f,698.46f,
+                                 523.25f,659.25f,783.99f,987.77f,880.0f,783.99f,659.25f,587.33f };
+        const float bass[] = { 130.81f,130.81f,164.81f,164.81f,146.83f,146.83f,174.61f,174.61f,
+                               130.81f,130.81f,164.81f,164.81f,110.0f,110.0f,146.83f,146.83f };
+        for (unsigned int i=0; i<frames; ++i) {
+            const float t=static_cast<float>(i)/static_cast<float>(sampleRate);
+            const unsigned int note=std::min(15u,static_cast<unsigned int>(t/0.5f));
+            const float within=std::fmod(t,0.5f);
+            const float noteEnv=std::min(1.0f,within/0.025f)*std::min(1.0f,(0.5f-within)/0.055f);
+            const float loopEnv=std::min(1.0f,t/0.08f)*std::min(1.0f,(musicDuration-t)/0.12f);
+            float v=0.50f*std::sin(2.0f*PI*melody[note]*t)*noteEnv
+                   +0.22f*std::sin(2.0f*PI*bass[note]*t)
+                   +0.10f*std::sin(2.0f*PI*(melody[note]*0.5f)*t);
+            v*=loopEnv*0.62f;
+            samples[i]=static_cast<short>(std::clamp(v,-1.0f,1.0f)*32767.0f);
+        }
+        Wave wave={frames,sampleRate,16,1,samples};
+        sfxBackgroundMusic=LoadSoundFromWave(wave);
+        UnloadWave(wave);
+        if(sfxBackgroundMusic.frameCount>0) SetSoundVolume(sfxBackgroundMusic,musicVolume);
+    }
 }
 
 void CloseGameAudio() {
@@ -299,6 +347,9 @@ void CloseGameAudio() {
     UnloadSound(sfxLevel);
     UnloadSound(sfxMenu);
     UnloadSound(sfxLand);
+    UnloadSound(sfxGameOver);
+    if (IsSoundPlaying(sfxBackgroundMusic)) StopSound(sfxBackgroundMusic);
+    UnloadSound(sfxBackgroundMusic);
     CloseAudioDevice();
     audioReady = false;
 }
@@ -573,6 +624,10 @@ void AddCoin(float x, float y, float phase) {
     coins.push_back({ { x, y }, false, phase });
 }
 
+void AddPowerUp(float x, float y, int type, float phase) {
+    powerUps.push_back({ { x, y }, type, false, phase });
+}
+
 void AddEnemy(float x, float y, float minX, float maxX, float baseSpeed) {
     const float modeScale = difficulty == 0 ? 0.78f : (difficulty == 2 ? 1.30f : 1.0f);
     const float progressionScale = 1.0f + static_cast<float>(levelIndex) * 0.035f;
@@ -588,7 +643,10 @@ void LoadLevel(int which) {
     platforms.clear();
     spikes.clear();
     coins.clear();
+    powerUps.clear();
     enemies.clear();
+    magnetTimer = 0.0f;
+    bootsTimer = 0.0f;
     particles.clear();
 
     if (levelIndex == 0) {
@@ -599,8 +657,9 @@ void LoadLevel(int which) {
             { { 1840, 440, 240, 100 } }, { { 2110, 395, 180, 30 } },
             { { 2350, 450, 490, 100 } }
         };
-        spikes = { { { 248, 444, 52, 26 }, 0 }, { { 1080, 424, 54, 26 }, 0 },
-                   { { 1915, 414, 50, 26 }, 0 }, { { 2490, 424, 50, 26 }, 0 } };
+        // Cactus PNGs sit directly on the top edge of each supporting ground platform.
+        spikes = { { { 248, 422, 32, 48 }, 4 }, { { 1080, 402, 32, 48 }, 4 },
+                   { { 1915, 392, 32, 48 }, 4 }, { { 2490, 402, 32, 48 }, 4 } };
         AddCoin(180, 423, 0.0f); AddCoin(360, 420, 1.0f);
         AddCoin(575, 385, 2.0f); AddCoin(635, 385, 3.0f);
         AddCoin(805, 340, 1.5f); AddCoin(865, 340, 2.5f);
@@ -740,6 +799,13 @@ void LoadLevel(int which) {
 
     // All hazards are placed directly on a rendered platform surface; no invisible hitboxes.
 
+    // Place a rotating selection of pickups on actual platform surfaces for all levels.
+    for (size_t i=2; i+1<platforms.size(); i+=5) {
+        const auto& p=platforms[i];
+        const int type=(static_cast<int>(i/5)+levelIndex)%2; // 0 magnet, 1 flying boots
+        AddPowerUp(p.box.x+p.box.width*0.52f,p.box.y-34.0f,type,static_cast<float>(i)*0.71f);
+    }
+
     player.pos = { 70.0f, 422.0f };
     player.vel = { 0.0f, 0.0f };
     player.grounded = false;
@@ -784,6 +850,7 @@ void TakeHit() {
     screenShakeTimer = 0.34f;
     impactTimer = 0.42f;
     pendingGameOver = player.lives <= 0;
+    if (pendingGameOver) PlayFx(sfxGameOver);
 
     const Vector2 impact = { player.pos.x + PLAYER_W * 0.5f,
                              player.pos.y + PLAYER_H * 0.5f };
@@ -899,8 +966,8 @@ void UpdateGame(float dt) {
     if (std::fabs(move) > 0.05f) playerFacing = move > 0.0f ? 1.0f : -1.0f;
     landingTimer = std::max(0.0f, landingTimer - dt);
 
-    if (jumpPressed && player.grounded) {
-        player.vel.y = -JUMP_SPEED;
+    if (jumpPressed && (player.grounded || bootsTimer > 0.0f || cheatEnabled)) {
+        player.vel.y = -(bootsTimer > 0.0f ? JUMP_SPEED * 1.16f : JUMP_SPEED);
         player.grounded = false;
         SpawnFootDust({ player.pos.x + PLAYER_W * 0.5f,
                         player.pos.y + PLAYER_H - 2.0f }, 8);
