@@ -10,7 +10,12 @@ A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the an
 - Platforms, coins, patrolling enemies, visible hazards, and a goal flag across all ten stages
 - Score popups, heart-based lives, visible damage/respawn feedback, pause, restart, game-over, and victory screens
 - Difficulty-scaled movement speed, enemy speed, and hazard density; difficulty remains separate from level progression
-- Keyboard, gamepad, and on-screen touch controls
+- Keyboard, gamepad, and on-screen touch controls with a responsive 16:9 virtual canvas
+- Five-second startup splash with a horizontal progress bar and “Developed by Sadik Laskar” credit
+- Generated looping background theme music with a Settings toggle and adjustable volume; distinct synthesized jump, coin, damage, power-up, and game-over sounds
+- Ground-attached opening cactus hazards, level-specific decorative ground details, flying birds and patrolling flying enemies
+- Magnet pickup (temporarily attracts nearby coins) and flying-boots pickup (temporary boosted jumps and air jumps)
+- Local-only PIN 74330 exploration mode: invincibility, safe recovery after falling, and a Disable Cheat button in Settings; cheat is not saved between launches
 - Procedurally generated jump, coin, stomp, damage, menu, and level sound effects (no sound files needed)
 - Readable anti-aliased system UI font (Segoe UI on Windows, Roboto on Android, DejaVu/Liberation on Linux where installed)
 - Desktop executable/window icon and Android launcher icon
