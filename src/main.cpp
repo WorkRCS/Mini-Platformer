@@ -847,7 +847,7 @@ void UpdateGame(float dt) {
     if (screen == Screen::Playing && player.pos.x > WORLD_W - 135.0f) {
         SpawnParticles({ WORLD_W - 100.0f, 385.0f }, C_MINT, 30);
         PlayFx(sfxLevel);
-        if (levelIndex < 2) {
+        if (levelIndex < LEVEL_COUNT - 1) {
             LoadLevel(levelIndex + 1);
         } else {
             screen = Screen::Victory;
@@ -1217,9 +1217,11 @@ void DrawDamageFeedback() {
 
 void DrawHud() {
     DrawRectangleRounded({ 16, 15, 288, 58 }, 0.18f, 8, Color{ 13, 26, 45, 205 });
-    DrawUIText(TextFormat("LEVEL %d / 3", levelIndex + 1), 30, 24, 14,
+    DrawUIText(TextFormat("LEVEL %02d / %02d", levelIndex + 1, LEVEL_COUNT), 30, 21, 13,
              Color{ 159, 190, 220, 255 });
-    DrawUIText(TextFormat("SCORE %04d", score), 30, 43, 19, C_GOLD);
+    DrawUIText(LevelName(levelIndex), 30, 36, 10,
+             Color{ 159, 216, 208, 255 });
+    DrawUIText(TextFormat("SCORE %04d", score), 30, 48, 18, C_GOLD);
     DrawUIText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
     for (int i = 0; i < StartingLives(); ++i) {
         const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
@@ -1303,8 +1305,8 @@ void DrawTitle() {
     DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
     DrawCircleV({ 353, 297 }, 8, C_GOLD);
     DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
-    DrawUIText("3 LEVELS", 81, 427, 17, C_GOLD);
-    DrawUIText("Easy, Normal and Hard difficulty", 81, 454, 14,
+    DrawUIText("10 LEVELS", 81, 427, 17, C_GOLD);
+    DrawUIText("Easy, Medium and Hard difficulty", 81, 454, 14,
              Color{ 177, 203, 223, 255 });
     DrawUIText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
              Color{ 145, 180, 205, 255 });
