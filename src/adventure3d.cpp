@@ -375,23 +375,88 @@ void MakeWorld() {
     worldClock = 0.0f;
 }
 
+bool IsAbsoluteAssetPath(const std::string& path) {
+    if (path.empty()) return false;
+#if defined(_WIN32)
+    return (path.size() >= 3 && path[1] == ':' && (path[2] == '/' || path[2] == '\\'))
+        || (path.size() >= 2 && (path[0] == '/' || path[0] == '\\') && path[1] == path[0]);
+#else
+    return path[0] == '/';
+#endif
+}
+
+// Resolve assets beside the executable first. Relative paths based on the
+// process working directory break when a Windows build is launched from a
+// shortcut, another terminal directory, or a file manager.
+std::string ResolveAssetPath(const std::string& requestedPath) {
+    if (requestedPath.empty() || IsAbsoluteAssetPath(requestedPath)) return requestedPath;
+
+    std::string appDirectory = GetApplicationDirectory();
+    if (!appDirectory.empty() && appDirectory.back() != '/' && appDirectory.back() != '\\')
+        appDirectory.push_back('/');
+
+    const std::string executableRelativePath = appDirectory + requestedPath;
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    // Android's packaged asset paths can be virtual; preserve raylib's normal
+    // relative lookup before trying the application directory.
+    if (FileExists(requestedPath.c_str())) return requestedPath;
+    if (FileExists(executableRelativePath.c_str())) return executableRelativePath;
+#else
+    if (FileExists(executableRelativePath.c_str())) return executableRelativePath;
+    if (FileExists(requestedPath.c_str())) return requestedPath;
+#endif
+    // Return the preferred path even when absent so any diagnostic points at
+    // the expected runtime location beside the executable.
+    return executableRelativePath;
+}
+
+Model LoadModelFromPath(const std::string& requestedPath) {
+    const std::string path = ResolveAssetPath(requestedPath);
+    if (!FileExists(path.c_str())) {
+        TraceLog(LOG_DEBUG, "Optional 3D asset not found: %s", path.c_str());
+        return Model{};
+    }
+
+    TraceLog(LOG_INFO, "Loading 3D model: %s", path.c_str());
+    Model model = LoadModel(path.c_str());
+    if (model.meshCount <= 0 || model.meshes == nullptr) {
+        TraceLog(LOG_WARNING, "3D model failed to load or contains no meshes: %s", path.c_str());
+        if (model.meshes != nullptr || model.materials != nullptr || model.materialCount > 0)
+            UnloadModel(model);
+        return Model{};
+    }
+
+    TraceLog(LOG_INFO, "Loaded 3D model (%i meshes): %s", model.meshCount, path.c_str());
+    return model;
+}
+
 Model LoadModelFromManifest(const char* manifestPath) {
-    if (!FileExists(manifestPath)) return Model{};
-    char* raw = LoadFileText(manifestPath);
-    if (raw == nullptr) return Model{};
+    const std::string resolvedManifest = ResolveAssetPath(manifestPath);
+    if (!FileExists(resolvedManifest.c_str())) return Model{};
+    char* raw = LoadFileText(resolvedManifest.c_str());
+    if (raw == nullptr) {
+        TraceLog(LOG_WARNING, "Could not read 3D asset manifest: %s", resolvedManifest.c_str());
+        return Model{};
+    }
+
     std::string path(raw);
     UnloadFileText(raw);
     while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' ' || path.back() == '\t')) path.pop_back();
     while (!path.empty() && (path.front() == ' ' || path.front() == '\t')) path.erase(path.begin());
-    if (path.empty() || !FileExists(path.c_str())) return Model{};
-    return LoadModel(path.c_str());
+    if (path.empty()) {
+        TraceLog(LOG_WARNING, "Empty 3D asset manifest: %s", resolvedManifest.c_str());
+        return Model{};
+    }
+    return LoadModelFromPath(path);
 }
+
 Model LoadOptionalModelStem(const char* stem) {
     const char* extensions[] = { ".glb", ".gltf" };
     for (const char* ext : extensions) {
-        const std::string path = std::string(stem) + ext;
+        const std::string requestedPath = std::string(stem) + ext;
+        const std::string path = ResolveAssetPath(requestedPath);
         if (!FileExists(path.c_str())) continue;
-        Model model = LoadModel(path.c_str());
+        Model model = LoadModelFromPath(path);
         if (model.meshCount > 0) return model;
     }
     return Model{};
@@ -420,6 +485,14 @@ void LoadOptionalNatureModels() {
     sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss");
     if (sketchfabBossModel.meshCount == 0) sketchfabBossModel = LoadModelFromManifest("assets/3d/sketchfab_boss_path.txt");
     sketchfabBossReady = sketchfabBossModel.meshCount > 0;
+
+    TraceLog(LOG_INFO,
+        "3D asset status: tree=%s, rock=%s, hero=%s, monster=%s, boss=%s",
+        treeModelReady ? "external model" : "procedural fallback",
+        rockModelReady ? "external model" : "procedural fallback",
+        sketchfabHeroReady ? "external model" : "procedural fallback",
+        sketchfabMonsterReady ? "external model" : "procedural fallback",
+        sketchfabBossReady ? "external model" : "procedural fallback");
 }
 
 void UnloadOptionalNatureModels() {
