@@ -53,6 +53,15 @@ struct Player {
 
 Screen screen = Screen::Menu;
 RenderTexture2D canvas {};
+Texture2D characterAtlas {};
+Texture2D backgroundTexture {};
+Image backgroundFrames {};
+int backgroundFrameCount = 0;
+int currentBackgroundFrame = 0;
+float backgroundFrameTimer = 0.0f;
+float landingTimer = 0.0f;
+float runDustTimer = 0.0f;
+float playerFacing = 1.0f;
 Vector2 pointer { 0.0f, 0.0f };
 bool touchDown = false;
 bool touchPressed = false;
@@ -229,11 +238,95 @@ void CloseGameAudio() {
 void SpawnParticles(Vector2 pos, Color color, int amount = 16) {
     for (int i = 0; i < amount; ++i) {
         const float a = (static_cast<float>(GetRandomValue(0, 359)) * PI) / 180.0f;
-        const float s = static_cast<float>(GetRandomValue(55, 220));
-        particles.push_back({ pos, { std::cos(a) * s, std::sin(a) * s },
+        const float speed = static_cast<float>(GetRandomValue(55, 220));
+        particles.push_back({ pos, { std::cos(a) * speed, std::sin(a) * speed },
                               GetRandomValue(35, 85) / 100.0f,
                               0.85f, static_cast<float>(GetRandomValue(2, 5)), color });
     }
+}
+
+void SpawnFootDust(Vector2 pos, int amount = 5) {
+    for (int i = 0; i < amount; ++i) {
+        const float vx = static_cast<float>(GetRandomValue(-85, 85));
+        const float vy = static_cast<float>(GetRandomValue(-95, -20));
+        const float life = GetRandomValue(22, 42) / 100.0f;
+        const Color dust = (i % 2 == 0)
+            ? Color{ 218, 239, 221, 220 }
+            : Color{ 171, 211, 199, 210 };
+        particles.push_back({ pos, { vx, vy }, life, life,
+                              static_cast<float>(GetRandomValue(2, 4)), dust });
+    }
+}
+
+const char* BackgroundAssetPath() {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    return "background.gif";
+#else
+    if (FileExists("assets/background.gif")) return "assets/background.gif";
+    if (FileExists("../assets/background.gif")) return "../assets/background.gif";
+    return "assets/background.gif";
+#endif
+}
+
+const char* CharacterAssetPath() {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    return "character_atlas.png";
+#else
+    if (FileExists("assets/character_atlas.png")) return "assets/character_atlas.png";
+    if (FileExists("../assets/character_atlas.png")) return "../assets/character_atlas.png";
+    return "assets/character_atlas.png";
+#endif
+}
+
+void LoadGameAssets() {
+    backgroundFrames = LoadImageAnim(BackgroundAssetPath(), &backgroundFrameCount);
+    if (backgroundFrames.data != nullptr && backgroundFrameCount > 0) {
+        const Image firstFrame = {
+            backgroundFrames.data,
+            backgroundFrames.width,
+            backgroundFrames.height,
+            backgroundFrames.mipmaps,
+            backgroundFrames.format
+        };
+        backgroundTexture = LoadTextureFromImage(firstFrame);
+        if (backgroundTexture.id != 0) SetTextureFilter(backgroundTexture, TEXTURE_FILTER_BILINEAR);
+    } else {
+        TraceLog(LOG_WARNING, "ASSET: Could not load animated background GIF; using fallback background");
+        backgroundFrameCount = 0;
+    }
+
+    characterAtlas = LoadTexture(CharacterAssetPath());
+    if (characterAtlas.id != 0) SetTextureFilter(characterAtlas, TEXTURE_FILTER_BILINEAR);
+    else TraceLog(LOG_WARNING, "ASSET: Could not load character_atlas.png; using fallback character");
+}
+
+void UpdateBackgroundAnimation(float dt) {
+    if (backgroundFrames.data == nullptr || backgroundTexture.id == 0 ||
+        backgroundFrameCount < 2) return;
+
+    backgroundFrameTimer += dt;
+    constexpr float frameDuration = 0.10f;
+    if (backgroundFrameTimer < frameDuration) return;
+
+    while (backgroundFrameTimer >= frameDuration) {
+        backgroundFrameTimer -= frameDuration;
+        currentBackgroundFrame = (currentBackgroundFrame + 1) % backgroundFrameCount;
+    }
+
+    const size_t frameBytes = static_cast<size_t>(backgroundFrames.width) *
+                              static_cast<size_t>(backgroundFrames.height) * 4u;
+    const auto* framePixels = static_cast<const unsigned char*>(backgroundFrames.data) +
+                              frameBytes * static_cast<size_t>(currentBackgroundFrame);
+    UpdateTexture(backgroundTexture, framePixels);
+}
+
+void UnloadGameAssets() {
+    if (backgroundTexture.id != 0) UnloadTexture(backgroundTexture);
+    if (characterAtlas.id != 0) UnloadTexture(characterAtlas);
+    if (backgroundFrames.data != nullptr) UnloadImage(backgroundFrames);
+    backgroundTexture = {};
+    characterAtlas = {};
+    backgroundFrames = {};
 }
 
 void AddCoin(float x, float y, float phase) {
@@ -324,6 +417,8 @@ void LoadLevel(int which) {
     cameraX = 0.0f;
     hurtFlash = 0.0f;
     damageNoticeTimer = 0.0f;
+    landingTimer = 0.0f;
+    runDustTimer = 0.0f;
     scoreNoticeTimer = 0.0f;
     scoreNoticeValue = 0;
     respawnTimer = 0.0f;
@@ -379,7 +474,6 @@ void UpdateParticles(float dt) {
 }
 
 void UpdateGame(float dt) {
-    gameClock += dt;
     hurtFlash = std::max(0.0f, hurtFlash - dt);
     damageNoticeTimer = std::max(0.0f, damageNoticeTimer - dt);
     scoreNoticeTimer = std::max(0.0f, scoreNoticeTimer - dt);
@@ -452,12 +546,18 @@ void UpdateGame(float dt) {
         pRect = PlayerRect();
     }
 
+    if (std::fabs(move) > 0.05f) playerFacing = move > 0.0f ? 1.0f : -1.0f;
+    landingTimer = std::max(0.0f, landingTimer - dt);
+
     if (jumpPressed && player.grounded) {
         player.vel.y = -JUMP_SPEED;
         player.grounded = false;
+        SpawnFootDust({ player.pos.x + PLAYER_W * 0.5f,
+                        player.pos.y + PLAYER_H - 2.0f }, 8);
         PlayFx(sfxJump);
     }
 
+    const bool wasGrounded = player.grounded;
     const float oldBottom = player.pos.y + PLAYER_H;
     player.vel.y += GRAVITY * dt;
     player.pos.y += player.vel.y * dt;
@@ -476,6 +576,21 @@ void UpdateGame(float dt) {
         }
         pRect = PlayerRect();
     }
+
+    if (!wasGrounded && player.grounded) {
+        landingTimer = 0.15f;
+        SpawnFootDust({ player.pos.x + PLAYER_W * 0.5f,
+                        player.pos.y + PLAYER_H - 1.0f }, 9);
+    }
+
+    if (player.grounded && std::fabs(move) > 0.1f) {
+        runDustTimer -= dt;
+        if (runDustTimer <= 0.0f) {
+            SpawnFootDust({ player.pos.x + PLAYER_W * 0.5f,
+                            player.pos.y + PLAYER_H - 1.0f }, 3);
+            runDustTimer = 0.16f;
+        }
+    } else runDustTimer = 0.0f;
 
     for (auto& coin : coins) {
         if (coin.taken) continue;
@@ -552,11 +667,31 @@ void UpdateGame(float dt) {
 }
 
 void DrawBackground(float camX) {
+    if (backgroundTexture.id != 0) {
+        // Preserve the supplied GIF's aspect ratio and pan a little as the player advances.
+        const float texW = static_cast<float>(backgroundTexture.width);
+        const float texH = static_cast<float>(backgroundTexture.height);
+        const float scale = std::max(static_cast<float>(VIEW_W) / texW,
+                                      static_cast<float>(VIEW_H) / texH);
+        const float drawW = texW * scale;
+        const float drawH = texH * scale;
+        const float spareX = std::max(0.0f, drawW - VIEW_W);
+        const float progress = std::clamp(camX / (WORLD_W - VIEW_W), 0.0f, 1.0f);
+        const Rectangle source = { 0.0f, 0.0f, texW, texH };
+        const Rectangle dest = { -spareX * progress, (VIEW_H - drawH) * 0.5f,
+                                 drawW, drawH };
+        DrawTexturePro(backgroundTexture, source, dest, { 0.0f, 0.0f },
+                       0.0f, WHITE);
+        // Subtle contrast layer keeps the pixel-art scenery bright while separating gameplay.
+        DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
+                               Color{ 12, 32, 58, 18 }, Color{ 9, 22, 37, 68 });
+        return;
+    }
+
+    // Fallback artwork is used only if a user builds without the supplied files.
     DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
                            Color{ 17, 28, 62, 255 },
                            Color{ 87, 158, 190, 255 });
-
-    // Stars and distant glowing sky dots.
     for (int i = 0; i < 42; ++i) {
         const int x = (i * 137 + 41) % VIEW_W;
         const int y = (i * 71 + 23) % 260;
@@ -566,7 +701,6 @@ void DrawBackground(float camX) {
     DrawCircle(760, 105, 40, Color{ 255, 221, 148, 50 });
     DrawCircle(760, 105, 28, Color{ 255, 228, 165, 220 });
 
-    // Soft, layered mountains create a parallax feel without external art.
     for (int i = 0; i < 9; ++i) {
         float x = std::fmod(i * 190.0f - camX * 0.18f, 1900.0f);
         if (x < -220.0f) x += 1900.0f;
@@ -576,7 +710,6 @@ void DrawBackground(float camX) {
         DrawTriangle({ x + 10, 420 }, { x + 130, peak + 40 }, { x + 260, 420 },
                      Color{ 43, 85, 125, 190 });
     }
-
     DrawRectangle(0, 420, VIEW_W, 120, Color{ 25, 58, 78, 150 });
     for (int i = 0; i < 24; ++i) {
         float x = std::fmod(i * 85.0f - camX * 0.33f, 2040.0f);
@@ -675,7 +808,7 @@ void DrawEnemy(const Enemy& e) {
                2.0f, Color{ 92, 24, 49, 255 });
 }
 
-void DrawPlayer() {
+void DrawPlayerFallback() {
     const float x = player.pos.x - cameraX;
     const float run = player.grounded && std::fabs(player.vel.x) > 1.0f
                       ? std::sin(gameClock * 15.0f) : 0.0f;
@@ -727,6 +860,97 @@ void DrawPlayer() {
                         Color{ 255, 99, 116, 245 });
         DrawText("HIT", static_cast<int>(x + 2.0f), static_cast<int>(y - 19.0f),
                  14, Color{ 255, 225, 224, 255 });
+    }
+}
+
+
+void DrawPlayerFallback() {
+    const float x = player.pos.x - cameraX;
+    const bool damaged = hurtFlash > 0.0f || respawnTimer > 0.0f;
+    const Color body = damaged ? C_CORAL : C_MINT;
+    DrawEllipse(static_cast<int>(x + PLAYER_W * 0.5f),
+                static_cast<int>(player.pos.y + PLAYER_H + 2.0f),
+                23.0f, 6.0f, Color{ 8, 15, 27, 135 });
+    DrawRectangleRounded({ x + 2.0f, player.pos.y + 16.0f,
+                           PLAYER_W - 4.0f, PLAYER_H - 16.0f },
+                         0.26f, 8, body);
+    DrawRectangleRoundedLinesEx({ x + 2.0f, player.pos.y + 16.0f,
+                                  PLAYER_W - 4.0f, PLAYER_H - 16.0f },
+                                0.26f, 8, 2.0f, Color{ 18, 47, 69, 255 });
+    DrawCircleV({ x + PLAYER_W * 0.5f, player.pos.y + 13.0f }, 12.0f,
+                Color{ 226, 255, 241, 255 });
+    DrawCircleV({ x + PLAYER_W * 0.5f - 4.0f, player.pos.y + 13.0f }, 2.0f, C_INK);
+    DrawCircleV({ x + PLAYER_W * 0.5f + 4.0f, player.pos.y + 13.0f }, 2.0f, C_INK);
+    if (damaged) DrawText("HIT", static_cast<int>(x), static_cast<int>(player.pos.y - 18), 14, C_CORAL);
+}
+
+void DrawPlayer() {
+    if (characterAtlas.id == 0) {
+        DrawPlayerFallback();
+        return;
+    }
+
+    const bool damaged = hurtFlash > 0.0f || respawnTimer > 0.0f;
+    int row = 0;
+    int frame = 0;
+    const float horizontalSpeed = std::fabs(player.vel.x);
+
+    if (damaged) {
+        row = 3;
+        frame = player.vel.y < 0.0f ? 2 : 3;
+    } else if (!player.grounded) {
+        row = 3;
+        if (player.vel.y < -90.0f) frame = 2;       // rising jump, arms up
+        else if (player.vel.y > 100.0f) frame = 3;  // falling / air pose
+        else frame = 1;                             // crouch at the jump apex
+    } else if (landingTimer > 0.0f) {
+        row = 3;
+        frame = 4;                                 // landing pose
+    } else if (horizontalSpeed > 40.0f) {
+        row = horizontalSpeed < 282.0f ? 1 : 2;    // walk or run strip
+        const float rate = row == 1 ? 8.0f : 12.0f;
+        frame = static_cast<int>(gameClock * rate) % 5;
+    } else {
+        row = 0;
+        frame = static_cast<int>(gameClock * 3.0f) % 5;
+    }
+
+    const Rectangle sourceBase = {
+        static_cast<float>(frame * 96),
+        static_cast<float>(row * 120),
+        96.0f, 120.0f
+    };
+    Rectangle source = sourceBase;
+    if (playerFacing < 0.0f) {
+        source.x += source.width;
+        source.width = -source.width;
+    }
+
+    constexpr float spriteW = 76.0f;
+    constexpr float spriteH = 100.0f;
+    const float screenX = player.pos.x - cameraX;
+    const float bottom = player.pos.y + PLAYER_H;
+    const Rectangle dest = {
+        screenX + (PLAYER_W - spriteW) * 0.5f,
+        bottom - spriteH,
+        spriteW, spriteH
+    };
+
+    DrawEllipse(static_cast<int>(screenX + PLAYER_W * 0.5f),
+                static_cast<int>(bottom + 2.0f), 24.0f, 6.0f,
+                Color{ 8, 15, 27, 130 });
+
+    const Color tint = damaged ? Color{ 255, 160, 170, 255 } : WHITE;
+    DrawTexturePro(characterAtlas, source, dest, { 0.0f, 0.0f }, 0.0f, tint);
+
+    // Never blink the character out of view. Add an explicit hit marker instead.
+    if (damaged) {
+        const float ring = 32.0f + std::sin(gameClock * 36.0f) * 2.5f;
+        DrawCircleLines(static_cast<int>(screenX + PLAYER_W * 0.5f),
+                        static_cast<int>(bottom - spriteH * 0.47f),
+                        ring, Color{ 255, 81, 111, 230 });
+        DrawText("HIT", static_cast<int>(screenX - 1.0f),
+                 static_cast<int>(bottom - spriteH - 8.0f), 14, Color{ 255, 225, 224, 255 });
     }
 }
 
@@ -1039,13 +1263,15 @@ int main() {
     InitWindow(VIEW_W, VIEW_H, "Tiny Trails - Mini Platformer");
     SetTargetFPS(60);
     SetWindowMinSize(800, 450);
+    LoadGameAssets();
     InitGameAudio();
     canvas = LoadRenderTexture(VIEW_W, VIEW_H);
-    // The UI is text-heavy, so nearest sampling keeps small labels and icons crisp.
-    SetTextureFilter(canvas.texture, TEXTURE_FILTER_POINT);
+    SetTextureFilter(canvas.texture, TEXTURE_FILTER_BILINEAR);
 
     while (!WindowShouldClose() && !exitRequested) {
         const float dt = std::min(GetFrameTime(), 0.033f);
+        gameClock += dt;
+        UpdateBackgroundAnimation(dt);
         UpdatePointer();
 
         if (screen == Screen::Menu) {
@@ -1089,6 +1315,7 @@ int main() {
     }
 
     UnloadRenderTexture(canvas);
+    UnloadGameAssets();
     CloseGameAudio();
     CloseWindow();
     return 0;
