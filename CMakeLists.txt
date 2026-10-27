@@ -56,14 +56,15 @@ else()
     endif()
 endif()
 
-# Copy runtime assets after every desktop build, not only during CMake
-# configure. This picks up GLB files downloaded after the build folder exists.
+# Run on every build, even when the executable is already up-to-date.
+# This picks up GLB files downloaded after the build folder was configured.
 if(NOT ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    add_custom_command(TARGET TinyTrails POST_BUILD
+    add_custom_target(copy_runtime_assets ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/assets"
-            "$<TARGET_FILE_DIR:TinyTrails>/assets"
+            "${CMAKE_BINARY_DIR}/assets"
         COMMENT "Copying runtime assets beside TinyTrails"
         VERBATIM
     )
+    add_dependencies(TinyTrails copy_runtime_assets)
 endif()
