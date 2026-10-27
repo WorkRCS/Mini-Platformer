@@ -1,0 +1,32 @@
+name: Build desktop game
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  windows-ucrt64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-raylib
+
+      - name: Configure
+        shell: msys2 {0}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --verbose
