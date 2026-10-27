@@ -1685,10 +1685,10 @@ void DrawDamageFeedback() {
                cactusHit ? (unsigned char)166 : (unsigned char)117, alpha });
 
     if (cactusHit || pillarHit) {
-        const Spike badge = {
-            { 312.0f + cameraX, 100.0f, 46.0f, 56.0f },
-            cactusHit ? 4 : 5
-        };
+        const Rectangle iconBox = cactusHit
+            ? Rectangle{312.0f + cameraX, 99.0f, 40.0f, 60.0f}
+            : Rectangle{317.0f + cameraX, 99.0f, 30.0f, 60.0f};
+        const Spike badge = { iconBox, cactusHit ? 4 : 5 };
         DrawSpike(badge);
     } else {
         DrawCircleV({ 333, 126 }, 18.0f, Color{ 255, 91, 110, alpha });
