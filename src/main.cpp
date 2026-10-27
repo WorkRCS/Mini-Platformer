@@ -92,6 +92,8 @@ Sound sfxStomp {};
 Sound sfxLevel {};
 Sound sfxMenu {};
 bool audioReady = false;
+Font uiFont {};
+bool customUiFont = false;
 
 Player player;
 int levelIndex = 0;
@@ -183,15 +185,15 @@ bool Button(Rectangle r, const char* label, bool active = true) {
     DrawRectangleRoundedLinesEx(r, 0.22f, 8, 2.0f,
                               active && hover ? C_MINT : Color{ 76, 96, 133, 255 });
     const int fs = 19;
-    const int tw = MeasureText(label, fs);
-    DrawText(label, static_cast<int>(r.x + (r.width - tw) * 0.5f),
+    const int tw = MeasureUIText(label, fs);
+    DrawUIText(label, static_cast<int>(r.x + (r.width - tw) * 0.5f),
              static_cast<int>(r.y + (r.height - fs) * 0.5f - 1),
              fs, active ? C_WHITE_90 : Color{ 133, 145, 165, 255 });
     return active && Pressed(r);
 }
 
 void TextCentered(const char* text, int y, int size, Color color) {
-    DrawText(text, (VIEW_W - MeasureText(text, size)) / 2, y, size, color);
+    DrawUIText(text, (VIEW_W - MeasureUIText(text, size)) / 2, y, size, color);
 }
 
 Sound MakeTone(float frequency, float duration, float volume, bool noisy = false) {
@@ -251,6 +253,65 @@ void CloseGameAudio() {
     UnloadSound(sfxMenu);
     CloseAudioDevice();
     audioReady = false;
+}
+
+
+void LoadReadableFont() {
+    uiFont = GetFontDefault();
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    const char* paths[] = {
+        "assets/Roboto-Regular.ttf",
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/Roboto-Medium.ttf"
+    };
+#elif defined(_WIN32)
+    const char* paths[] = {
+        "assets/Roboto-Regular.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf"
+    };
+#else
+    const char* paths[] = {
+        "assets/Roboto-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"
+    };
+#endif
+    for (const char* path : paths) {
+        if (!FileExists(path)) continue;
+        Font candidate = LoadFontEx(path, 64, nullptr, 0);
+        if (candidate.texture.id != 0) {
+            uiFont = candidate;
+            customUiFont = true;
+            SetTextureFilter(uiFont.texture, TEXTURE_FILTER_BILINEAR);
+            TraceLog(LOG_INFO, "UI: Loaded readable font from %s", path);
+            return;
+        }
+    }
+    TraceLog(LOG_WARNING, "UI: No system TTF font found; using raylib default font");
+}
+
+void UnloadReadableFont() {
+    if (customUiFont) UnloadFont(uiFont);
+    uiFont = {};
+    customUiFont = false;
+}
+
+void DrawUIText(const char* text, int x, int y, int size, Color color) {
+    if (text == nullptr) return;
+    if (uiFont.texture.id == 0) uiFont = GetFontDefault();
+    DrawTextEx(uiFont, text, { static_cast<float>(x), static_cast<float>(y) },
+               static_cast<float>(size),
+               std::max(0.5f, static_cast<float>(size) * 0.015f), color);
+}
+
+int MeasureUIText(const char* text, int size) {
+    if (text == nullptr) return 0;
+    if (uiFont.texture.id == 0) uiFont = GetFontDefault();
+    const Vector2 measured = MeasureTextEx(
+        uiFont, text, static_cast<float>(size),
+        std::max(0.5f, static_cast<float>(size) * 0.015f));
+    return static_cast<int>(std::ceil(measured.x));
 }
 
 void SpawnParticles(Vector2 pos, Color color, int amount = 16) {
@@ -596,6 +657,19 @@ void UpdateGame(float dt) {
     impactTimer = std::max(0.0f, impactTimer - dt);
     UpdateParticles(dt);
 
+    // Moving platforms are marked with an animated gold rim and carry a standing player.
+    for (auto& p : platforms) {
+        if (!p.moving) continue;
+        const float oldX = p.box.x;
+        p.box.x = p.originX + std::sin(gameClock * p.moveSpeed + p.phase) * p.travel;
+        const float deltaX = p.box.x - oldX;
+        const float playerBottom = player.pos.y + PLAYER_H;
+        const bool standingOn = player.grounded &&
+            std::fabs(playerBottom - p.box.y) <= 4.0f &&
+            player.pos.x + PLAYER_W > oldX && player.pos.x < oldX + p.box.width;
+        if (standingOn) player.pos.x += deltaX;
+    }
+
     if (respawnTimer > 0.0f) {
         respawnTimer = std::max(0.0f, respawnTimer - dt);
         player.pos.x += player.vel.x * dt;
@@ -647,7 +721,9 @@ void UpdateGame(float dt) {
         return;
     }
 
-    const float speed = difficulty == 0 ? 265.0f : (difficulty == 2 ? 325.0f : 295.0f);
+    const float baseSpeed = difficulty == 0 ? 245.0f : (difficulty == 2 ? 325.0f : 285.0f);
+    const float levelSpeedBonus = static_cast<float>(levelIndex) * 3.5f;
+    const float speed = baseSpeed + levelSpeedBonus;
     player.vel.x = move * speed;
     const float previousX = player.pos.x;
     player.pos.x += player.vel.x * dt;
@@ -940,7 +1016,7 @@ void DrawPlayerFallback() {
                 Color{ 226, 255, 241, 255 });
     DrawCircleV({ x + PLAYER_W * 0.5f - 4.0f, player.pos.y + 13.0f }, 2.0f, C_INK);
     DrawCircleV({ x + PLAYER_W * 0.5f + 4.0f, player.pos.y + 13.0f }, 2.0f, C_INK);
-    if (damaged) DrawText("HIT", static_cast<int>(x), static_cast<int>(player.pos.y - 18), 14, C_CORAL);
+    if (damaged) DrawUIText("HIT", static_cast<int>(x), static_cast<int>(player.pos.y - 18), 14, C_CORAL);
 }
 
 void DrawPlayer() {
@@ -1008,7 +1084,7 @@ void DrawPlayer() {
         DrawCircleLines(static_cast<int>(screenX + PLAYER_W * 0.5f),
                         static_cast<int>(bottom - spriteH * 0.47f),
                         ring, Color{ 255, 81, 111, 230 });
-        DrawText("HIT", static_cast<int>(screenX - 1.0f),
+        DrawUIText("HIT", static_cast<int>(screenX - 1.0f),
                  static_cast<int>(bottom - spriteH - 8.0f), 14, Color{ 255, 225, 224, 255 });
     }
 }
@@ -1018,7 +1094,7 @@ void DrawGoal() {
     DrawRectangle(static_cast<int>(x), 360, 5, 90, Color{ 234, 244, 255, 240 });
     DrawTriangle({ x + 5, 360 }, { x + 63, 378 }, { x + 5, 397 }, C_MINT);
     DrawCircle(static_cast<int>(x + 2), 355, 6, C_GOLD);
-    DrawText("GOAL", static_cast<int>(x - 12), 408, 12, C_WHITE_90);
+    DrawUIText("GOAL", static_cast<int>(x - 12), 408, 12, C_WHITE_90);
 }
 
 void DrawParticles() {
@@ -1049,7 +1125,7 @@ void DrawTouchControls() {
                  { left.x + 43, left.y + 49 }, C_WHITE_90);
     DrawTriangle({ right.x + 46, right.y + 34 }, { right.x + 25, right.y + 19 },
                  { right.x + 25, right.y + 49 }, C_WHITE_90);
-    DrawText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
+    DrawUIText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
              16, C_WHITE_90);
 #endif
 }
@@ -1068,7 +1144,7 @@ void DrawScoreNotice() {
     const float y = scoreNoticePos.y - 18.0f - elapsed * 40.0f;
     const unsigned char alpha = static_cast<unsigned char>(
         255.0f * std::clamp(scoreNoticeTimer / 0.20f, 0.0f, 1.0f));
-    DrawText(TextFormat("+%d", scoreNoticeValue), static_cast<int>(x - 8.0f),
+    DrawUIText(TextFormat("+%d", scoreNoticeValue), static_cast<int>(x - 8.0f),
              static_cast<int>(y), 20, Color{ 255, 232, 133, alpha });
 }
 
@@ -1111,28 +1187,28 @@ void DrawDamageFeedback() {
                                 Color{ 255, 90, 117, alpha });
     DrawTriangle({ 329, 105 }, { 351, 145 }, { 307, 145 },
                  Color{ 255, 91, 110, alpha });
-    DrawText("!", 324, 113, 25, Color{ 54, 18, 33, 255 });
-    DrawText(pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE",
+    DrawUIText("!", 324, 113, 25, Color{ 54, 18, 33, 255 });
+    DrawUIText(pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE",
              365, 101, 24, Color{ 255, 164, 173, alpha });
-    DrawText(pendingGameOver ? "No lives left" : "Knocked back - respawning",
+    DrawUIText(pendingGameOver ? "No lives left" : "Knocked back - respawning",
              366, 133, 13, C_WHITE_90);
 }
 
 void DrawHud() {
     DrawRectangleRounded({ 16, 15, 288, 58 }, 0.18f, 8, Color{ 13, 26, 45, 205 });
-    DrawText(TextFormat("LEVEL %d / 3", levelIndex + 1), 30, 24, 14,
+    DrawUIText(TextFormat("LEVEL %d / 3", levelIndex + 1), 30, 24, 14,
              Color{ 159, 190, 220, 255 });
-    DrawText(TextFormat("SCORE %04d", score), 30, 43, 19, C_GOLD);
-    DrawText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
+    DrawUIText(TextFormat("SCORE %04d", score), 30, 43, 19, C_GOLD);
+    DrawUIText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
     for (int i = 0; i < StartingLives(); ++i) {
         const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
         DrawHeart(204.0f + i * 17.0f, 50.0f, heart);
     }
 
     DrawRectangleRounded({ 768, 17, 174, 42 }, 0.20f, 7, Color{ 13, 26, 45, 205 });
-    DrawText(DifficultyName(), 785, 29, 15, C_WHITE_90);
+    DrawUIText(DifficultyName(), 785, 29, 15, C_WHITE_90);
     if (Button({ 891, 20, 39, 36 }, "II")) screen = Screen::Paused;
-    DrawText("ESC / P = PAUSE", 766, 65, 10, Color{ 225, 239, 250, 170 });
+    DrawUIText("ESC / P = PAUSE", 766, 65, 10, Color{ 225, 239, 250, 170 });
 }
 
 void DrawGame() {
@@ -1189,10 +1265,10 @@ void DrawTitle() {
                                 Color{ 88, 136, 164, 150 });
     DrawRectangleRounded({ 72, 71, 205, 28 }, 0.45f, 8,
                          Color{ 35, 96, 91, 220 });
-    DrawText("A TINY PLATFORM ADVENTURE", 84, 79, 11, C_MINT);
-    DrawText("TINY", 75, 120, 54, C_WHITE_90);
-    DrawText("TRAILS", 73, 169, 58, C_MINT);
-    DrawText("JUMP  /  COLLECT  /  SURVIVE", 80, 239, 15,
+    DrawUIText("A TINY PLATFORM ADVENTURE", 84, 79, 11, C_MINT);
+    DrawUIText("TINY", 75, 120, 54, C_WHITE_90);
+    DrawUIText("TRAILS", 73, 169, 58, C_MINT);
+    DrawUIText("JUMP  /  COLLECT  /  SURVIVE", 80, 239, 15,
              Color{ 201, 224, 239, 255 });
 
     // Floating islands make the game identity readable before pressing Play.
@@ -1206,10 +1282,10 @@ void DrawTitle() {
     DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
     DrawCircleV({ 353, 297 }, 8, C_GOLD);
     DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
-    DrawText("3 LEVELS", 81, 427, 17, C_GOLD);
-    DrawText("Easy, Normal and Hard difficulty", 81, 454, 14,
+    DrawUIText("3 LEVELS", 81, 427, 17, C_GOLD);
+    DrawUIText("Easy, Normal and Hard difficulty", 81, 454, 14,
              Color{ 177, 203, 223, 255 });
-    DrawText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
+    DrawUIText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
              Color{ 145, 180, 205, 255 });
 
     // Right-hand action card.
@@ -1217,8 +1293,8 @@ void DrawTitle() {
                          Color{ 10, 21, 40, 238 });
     DrawRectangleRoundedLinesEx({ 527, 42, 391, 456 }, 0.07f, 12, 2.0f,
                                 Color{ 79, 121, 158, 220 });
-    DrawText("MAIN MENU", 570, 76, 23, C_WHITE_90);
-    DrawText("Choose your next move", 570, 106, 14,
+    DrawUIText("MAIN MENU", 570, 76, 23, C_WHITE_90);
+    DrawUIText("Choose your next move", 570, 106, 14,
              Color{ 160, 191, 216, 255 });
     DrawRectangle(570, 132, 305, 1, Color{ 77, 104, 137, 190 });
 
@@ -1235,10 +1311,10 @@ void DrawTitle() {
 
     DrawRectangleRounded({ 570, 372, 305, 71 }, 0.12f, 8,
                          Color{ 22, 42, 64, 255 });
-    DrawText("BEST RUN", 590, 385, 11, Color{ 151, 183, 207, 255 });
-    DrawText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
-    DrawText("Collect coins. Reach the flag.", 688, 402, 12, C_WHITE_90);
-    DrawText("ESC / P pauses during a run", 570, 460, 12,
+    DrawUIText("BEST RUN", 590, 385, 11, Color{ 151, 183, 207, 255 });
+    DrawUIText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
+    DrawUIText("Collect coins. Reach the flag.", 688, 402, 12, C_WHITE_90);
+    DrawUIText("ESC / P pauses during a run", 570, 460, 12,
              Color{ 153, 183, 207, 255 });
 }
 
@@ -1249,14 +1325,14 @@ void DrawControlsScreen() {
     TextCentered("TINY TRAILS", 76, 38, C_WHITE_90);
     DrawRectangleRounded({ 225, 150, 510, 290 }, 0.06f, 8, Color{ 12, 23, 43, 248 });
     TextCentered("HOW TO PLAY", 174, 28, C_MINT);
-    DrawText("MOVE", 275, 226, 17, C_GOLD);
-    DrawText("A / D or arrow keys", 425, 226, 17, C_WHITE_90);
-    DrawText("JUMP", 275, 263, 17, C_GOLD);
-    DrawText("Space / W / Up", 425, 263, 17, C_WHITE_90);
-    DrawText("CONTROLLER", 275, 300, 17, C_GOLD);
-    DrawText("D-pad or left stick + A button", 425, 300, 15, C_WHITE_90);
-    DrawText("MOBILE", 275, 337, 17, C_GOLD);
-    DrawText("Use the on-screen arrows and JUMP", 425, 337, 15, C_WHITE_90);
+    DrawUIText("MOVE", 275, 226, 17, C_GOLD);
+    DrawUIText("A / D or arrow keys", 425, 226, 17, C_WHITE_90);
+    DrawUIText("JUMP", 275, 263, 17, C_GOLD);
+    DrawUIText("Space / W / Up", 425, 263, 17, C_WHITE_90);
+    DrawUIText("CONTROLLER", 275, 300, 17, C_GOLD);
+    DrawUIText("D-pad or left stick + A button", 425, 300, 15, C_WHITE_90);
+    DrawUIText("MOBILE", 275, 337, 17, C_GOLD);
+    DrawUIText("Use the on-screen arrows and JUMP", 425, 337, 15, C_WHITE_90);
     if (Button({ 370, 381, 220, 42 }, "BACK")) screen = Screen::Menu;
 }
 
@@ -1305,6 +1381,7 @@ int main() {
     SetTargetFPS(60);
     SetWindowMinSize(800, 450);
     LoadGameAssets();
+    LoadReadableFont();
     InitGameAudio();
     canvas = LoadRenderTexture(VIEW_W, VIEW_H);
     SetTextureFilter(canvas.texture, TEXTURE_FILTER_BILINEAR);
@@ -1358,6 +1435,7 @@ int main() {
     UnloadRenderTexture(canvas);
     UnloadGameAssets();
     CloseGameAudio();
+    UnloadReadableFont();
     CloseWindow();
     return 0;
 }
