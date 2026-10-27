@@ -569,7 +569,7 @@ void LoadLevel(int which) {
     };
 
     if (levelIndex < 3) buildRoute(2820.0f, 450.0f);
-    else buildRoute(300.0f, 450.0f);
+    else buildRoute(300.0f, 470.0f);
 
     // Level identity affects visible scenery and hazard art as well as geometry.
     // Extra challenge items are always drawn and match their collision rectangles.
@@ -1222,7 +1222,7 @@ void DrawHud() {
     DrawUIText(LevelName(levelIndex), 30, 36, 10,
              Color{ 159, 216, 208, 255 });
     DrawUIText(TextFormat("SCORE %04d", score), 30, 48, 18, C_GOLD);
-    DrawUIText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
+    DrawUIText("LIVES", 193, 23, 12, Color{ 159, 190, 220, 255 });
     for (int i = 0; i < StartingLives(); ++i) {
         const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
         DrawHeart(204.0f + i * 17.0f, 50.0f, heart);
@@ -1231,7 +1231,7 @@ void DrawHud() {
     DrawRectangleRounded({ 768, 17, 174, 42 }, 0.20f, 7, Color{ 13, 26, 45, 205 });
     DrawUIText(DifficultyName(), 785, 29, 15, C_WHITE_90);
     if (Button({ 891, 20, 39, 36 }, "II")) screen = Screen::Paused;
-    DrawUIText("ESC / P = PAUSE", 766, 65, 10, Color{ 225, 239, 250, 170 });
+    DrawUIText("ESC / P = PAUSE", 766, 65, 12, Color{ 225, 239, 250, 190 });
 }
 
 void DrawGame() {
@@ -1288,7 +1288,7 @@ void DrawTitle() {
                                 Color{ 88, 136, 164, 150 });
     DrawRectangleRounded({ 72, 71, 205, 28 }, 0.45f, 8,
                          Color{ 35, 96, 91, 220 });
-    DrawUIText("A TINY PLATFORM ADVENTURE", 84, 79, 11, C_MINT);
+    DrawUIText("A TINY PLATFORM ADVENTURE", 84, 79, 13, C_MINT);
     DrawUIText("TINY", 75, 120, 54, C_WHITE_90);
     DrawUIText("TRAILS", 73, 169, 58, C_MINT);
     DrawUIText("JUMP  /  COLLECT  /  SURVIVE", 80, 239, 15,
@@ -1305,10 +1305,10 @@ void DrawTitle() {
     DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
     DrawCircleV({ 353, 297 }, 8, C_GOLD);
     DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
-    DrawUIText("10 LEVELS", 81, 427, 17, C_GOLD);
-    DrawUIText("Easy, Medium and Hard difficulty", 81, 454, 14,
+    DrawUIText("10 LEVELS", 81, 427, 19, C_GOLD);
+    DrawUIText("Easy, Medium and Hard difficulty", 81, 454, 15,
              Color{ 177, 203, 223, 255 });
-    DrawUIText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
+    DrawUIText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 13,
              Color{ 145, 180, 205, 255 });
 
     // Right-hand action card.
