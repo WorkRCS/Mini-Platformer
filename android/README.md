@@ -8,7 +8,7 @@ The Android project is configured for a landscape NativeActivity and packages th
 - JDK 17
 - Android SDK Platform 35 and Build Tools 35.0.0
 - Android NDK (side-by-side)
-- Android SDK CMake 3.22.1
+- Android SDK CMake 3.25.2
 - Internet access for the first build (Gradle and raylib sources are downloaded)
 
 ## Build a debug APK on Windows
@@ -47,6 +47,6 @@ If a native-build component is missing, open Android Studio > Tools > SDK Manage
 - Android SDK Build-Tools 35.0.0
 - Android SDK Command-line Tools (latest)
 - NDK (Side by side)
-- CMake 3.22.1
+- CMake 3.25.2
 
 The game uses bundled assets rather than downloading resources at startup. The five-second splash is an animated progress display while the game initializes; it does not mean game data is being downloaded on the phone.
