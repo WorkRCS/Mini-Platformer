@@ -6,7 +6,7 @@
     <application
         android:allowBackup="false"
         android:hasCode="false"
-        android:label="Tiny Trails"
+        android:label="Wildbound: Boss Hunter"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
