@@ -38,6 +38,16 @@ struct Platform {
 struct Spike { Rectangle box; int type = 0; };
 struct Coin { Vector2 center; bool taken = false; float phase = 0.0f; };
 struct PowerUp { Vector2 center; int type = 0; bool taken = false; float phase = 0.0f; };
+struct FlyingEnemy {
+    Rectangle box;
+    float minX = 0.0f;
+    float maxX = 0.0f;
+    float speed = 70.0f;
+    int direction = 1;
+    float baseY = 220.0f;
+    float phase = 0.0f;
+    bool alive = true;
+};
 struct Enemy {
     Rectangle box;
     float minX = 0.0f;
@@ -99,6 +109,7 @@ std::vector<PowerUp> powerUps;
 float magnetTimer = 0.0f;
 float bootsTimer = 0.0f;
 std::vector<Enemy> enemies;
+std::vector<FlyingEnemy> flyingEnemies;
 std::vector<Particle> particles;
 
 Sound sfxJump {};
@@ -109,6 +120,7 @@ Sound sfxLevel {};
 Sound sfxMenu {};
 Sound sfxLand {};
 Sound sfxGameOver {};
+Sound sfxPowerUp {};
 Sound sfxBackgroundMusic {};
 bool audioReady = false;
 bool musicEnabled = true;
@@ -309,6 +321,7 @@ void InitGameAudio() {
     sfxMenu = MakeTone(420.0f, 0.07f, 0.20f);
     sfxLand = MakeTone(135.0f, 0.11f, 0.22f, true);
     sfxGameOver = MakeTone(94.0f, 0.72f, 0.62f, true);
+    sfxPowerUp = MakeTone(760.0f, 0.20f, 0.42f);
     // Soft layered chiptune, synthesized at runtime so it works on desktop and Android.
     constexpr unsigned int sampleRate = 22050;
     constexpr float musicDuration = 8.0f;
@@ -348,6 +361,7 @@ void CloseGameAudio() {
     UnloadSound(sfxMenu);
     UnloadSound(sfxLand);
     UnloadSound(sfxGameOver);
+    UnloadSound(sfxPowerUp);
     if (IsSoundPlaying(sfxBackgroundMusic)) StopSound(sfxBackgroundMusic);
     UnloadSound(sfxBackgroundMusic);
     CloseAudioDevice();
@@ -628,6 +642,10 @@ void AddPowerUp(float x, float y, int type, float phase) {
     powerUps.push_back({ { x, y }, type, false, phase });
 }
 
+void AddFlyingEnemy(float x, float y, float minX, float maxX, float speed, float phase) {
+    flyingEnemies.push_back({ {x,y,42.0f,28.0f}, minX, maxX, speed, 1, y, phase, true });
+}
+
 void AddEnemy(float x, float y, float minX, float maxX, float baseSpeed) {
     const float modeScale = difficulty == 0 ? 0.78f : (difficulty == 2 ? 1.30f : 1.0f);
     const float progressionScale = 1.0f + static_cast<float>(levelIndex) * 0.035f;
@@ -645,6 +663,7 @@ void LoadLevel(int which) {
     coins.clear();
     powerUps.clear();
     enemies.clear();
+    flyingEnemies.clear();
     magnetTimer = 0.0f;
     bootsTimer = 0.0f;
     particles.clear();
@@ -805,6 +824,12 @@ void LoadLevel(int which) {
         const int type=(static_cast<int>(i/5)+levelIndex)%2; // 0 magnet, 1 flying boots
         AddPowerUp(p.box.x+p.box.width*0.52f,p.box.y-34.0f,type,static_cast<float>(i)*0.71f);
     }
+    // One patrolling flying enemy per level, plus a decorative bird flock in the scenery.
+    AddFlyingEnemy(560.0f + static_cast<float>(levelIndex % 3) * 35.0f,
+                   242.0f + static_cast<float>(levelIndex % 4) * 15.0f,
+                   340.0f, WORLD_W - 300.0f,
+                   62.0f + static_cast<float>(levelIndex) * 4.0f,
+                   static_cast<float>(levelIndex) * 0.8f);
 
     player.pos = { 70.0f, 422.0f };
     player.vel = { 0.0f, 0.0f };
@@ -877,6 +902,8 @@ void UpdateParticles(float dt) {
 
 void UpdateGame(float dt) {
     hurtFlash = std::max(0.0f, hurtFlash - dt);
+    magnetTimer = std::max(0.0f, magnetTimer - dt);
+    bootsTimer = std::max(0.0f, bootsTimer - dt);
     damageNoticeTimer = std::max(0.0f, damageNoticeTimer - dt);
     scoreNoticeTimer = std::max(0.0f, scoreNoticeTimer - dt);
     screenShakeTimer = std::max(0.0f, screenShakeTimer - dt);
@@ -1010,6 +1037,20 @@ void UpdateGame(float dt) {
         }
     } else runDustTimer = 0.0f;
 
+    if (magnetTimer > 0.0f) {
+        const Vector2 target = {player.pos.x + PLAYER_W * 0.5f, player.pos.y + PLAYER_H * 0.4f};
+        for (auto& coin : coins) {
+            if (coin.taken) continue;
+            const float dx = target.x - coin.center.x, dy = target.y - coin.center.y;
+            const float distance = std::sqrt(dx * dx + dy * dy);
+            if (distance < 260.0f && distance > 2.0f) {
+                const float pull = std::min(1.0f, dt * 4.3f);
+                coin.center.x += dx * pull;
+                coin.center.y += dy * pull;
+            }
+        }
+    }
+
     for (auto& coin : coins) {
         if (coin.taken) continue;
         Rectangle c = { coin.center.x - 10.0f, coin.center.y - 10.0f, 20.0f, 20.0f };
@@ -1022,6 +1063,18 @@ void UpdateGame(float dt) {
             scoreNoticeTimer = 0.72f;
             SpawnParticles(coin.center, C_GOLD, 14);
             PlayFx(sfxCoin);
+        }
+    }
+
+    for (auto& item : powerUps) {
+        if (item.taken) continue;
+        const Rectangle pickup = {item.center.x - 14.0f, item.center.y - 14.0f, 28.0f, 28.0f};
+        if (CheckCollisionRecs(PlayerRect(), pickup)) {
+            item.taken = true;
+            if (item.type == 0) magnetTimer = 10.0f;
+            else bootsTimer = 10.0f;
+            SpawnParticles(item.center, item.type == 0 ? Color{255,90,180,255} : C_GOLD, 22);
+            PlayFx(sfxPowerUp);
         }
     }
 
@@ -1072,6 +1125,33 @@ void UpdateGame(float dt) {
     }
 
     if (player.grounded) lastSafePlayerPosition = player.pos;
+
+    for (auto& e : flyingEnemies) {
+        if (!e.alive) continue;
+        e.box.x += e.speed * static_cast<float>(e.direction) * dt;
+        if (e.box.x < e.minX) { e.box.x = e.minX; e.direction = 1; }
+        if (e.box.x + e.box.width > e.maxX) {
+            e.box.x = e.maxX - e.box.width;
+            e.direction = -1;
+        }
+        e.box.y = e.baseY + std::sin(gameClock * 2.1f + e.phase) * 28.0f;
+        if (!CheckCollisionRecs(PlayerRect(), e.box)) continue;
+        if (player.vel.y > 20.0f && oldBottom <= e.box.y + 13.0f) {
+            e.alive = false;
+            player.vel.y = -JUMP_SPEED * 0.58f;
+            SpawnParticles({e.box.x + e.box.width*0.5f,e.box.y+12.0f},C_MINT,18);
+            score += 25;
+            highScore = std::max(highScore,score);
+            scoreNoticeValue = 25;
+            scoreNoticePos = {e.box.x+e.box.width*0.5f,e.box.y};
+            scoreNoticeTimer = 0.78f;
+            PlayFx(sfxStomp);
+        } else if (!cheatEnabled) {
+            pendingHitObstacleType = -1;
+            TakeHit();
+            return;
+        }
+    }
 
     if (player.pos.y > VIEW_H + 110.0f && screen == Screen::Playing) {
         if (cheatEnabled) {
@@ -1299,6 +1379,46 @@ void DrawSpike(const Spike& spike) {
     }
 }
 
+
+void DrawPowerUp(const PowerUp& item) {
+    if (item.taken) return;
+    const float x = item.center.x - cameraX;
+    const float y = item.center.y + std::sin(gameClock * 3.2f + item.phase) * 4.0f;
+    if (x < -32 || x > VIEW_W + 32) return;
+    DrawCircleV({x,y},18,Color{item.type==0?255:110,item.type==item.type?82:255,220,32});
+    DrawCircleLines((int)x,(int)y,15,item.type==0?Color{255,115,198,255}:Color{255,220,106,255});
+    if (item.type == 0) {
+        // Magnet icon is drawn in code so no button/power-up artwork is required.
+        DrawRectangleRounded({x-10,y-8,7,17},0.2f,4,Color{244,81,103,255});
+        DrawRectangleRounded({x+3,y-8,7,17},0.2f,4,Color{76,156,255,255});
+        DrawRectangle((int)(x-10),(int)(y-9),7,5,Color{255,231,224,255});
+        DrawRectangle((int)(x+3),(int)(y-9),7,5,Color{230,243,255,255});
+        DrawLineEx({x-5,y+8},{x,y+12},3,Color{255,255,255,255});
+        DrawLineEx({x,y+12},{x+5,y+8},3,Color{255,255,255,255});
+    } else {
+        DrawRectangleRounded({x-12,y-3,18,10},0.3f,5,Color{255,208,73,255});
+        DrawRectangleRounded({x-5,y-10,13,12},0.3f,5,Color{255,234,140,255});
+        DrawRectangleRounded({x+2,y+1,12,6},0.2f,4,Color{232,145,42,255});
+        DrawLineEx({x-9,y+8},{x+12,y+8},2,Color{255,255,230,255});
+    }
+}
+
+void DrawFlyingEnemy(const FlyingEnemy& e) {
+    if (!e.alive) return;
+    const float x=e.box.x-cameraX, y=e.box.y;
+    if(x < -60 || x > VIEW_W+60) return;
+    const float wing=std::sin(gameClock*13.0f+e.phase)*5.0f;
+    DrawEllipse((int)(x+21),(int)(y+30),24,5,Color{9,17,30,90});
+    DrawTriangle({x+10,y+11},{x-2,y+1+wing},{x+14,y+20},Color{97,218,198,255});
+    DrawTriangle({x+30,y+11},{x+45,y+1-wing},{x+28,y+20},Color{97,218,198,255});
+    DrawCircleV({x+21,y+14},14,Color{91,105,218,255});
+    DrawCircleLines((int)(x+21),(int)(y+14),14,Color{206,222,255,255});
+    DrawCircleV({x+16,y+12},4,WHITE);
+    DrawCircleV({x+26,y+12},4,WHITE);
+    DrawCircleV({x+17,y+12},1.7f,C_INK);
+    DrawCircleV({x+27,y+12},1.7f,C_INK);
+    DrawTriangle({x+18,y+20},{x+24,y+20},{x+21,y+25},C_GOLD);
+}
 
 void DrawEnemy(const Enemy& e) {
     if (!e.alive) return;
