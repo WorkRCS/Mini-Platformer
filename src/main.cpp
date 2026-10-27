@@ -8,7 +8,8 @@
 namespace {
 constexpr int VIEW_W = 960;
 constexpr int VIEW_H = 540;
-constexpr float WORLD_W = 2840.0f;
+float WORLD_W = 3550.0f;
+constexpr int LEVEL_COUNT = 10;
 constexpr float PLAYER_W = 36.0f;
 constexpr float PLAYER_H = 48.0f;
 constexpr float GRAVITY = 1120.0f;
@@ -25,8 +26,15 @@ const Color C_WHITE_90  = { 242, 247, 255, 235 };
 
 enum class Screen { Menu, Controls, Playing, Paused, GameOver, Victory };
 
-struct Platform { Rectangle box; };
-struct Spike { Rectangle box; };
+struct Platform {
+    Rectangle box;
+    bool moving = false;
+    float originX = 0.0f;
+    float travel = 0.0f;
+    float moveSpeed = 0.0f;
+    float phase = 0.0f;
+};
+struct Spike { Rectangle box; int type = 0; };
 struct Coin { Vector2 center; bool taken = false; float phase = 0.0f; };
 struct Enemy {
     Rectangle box;
@@ -84,6 +92,8 @@ Sound sfxStomp {};
 Sound sfxLevel {};
 Sound sfxMenu {};
 bool audioReady = false;
+Font uiFont {};
+bool customUiFont = false;
 
 Player player;
 int levelIndex = 0;
@@ -106,8 +116,18 @@ bool exitRequested = false;
 
 const char* DifficultyName() {
     if (difficulty == 0) return "EASY";
-    if (difficulty == 1) return "NORMAL";
+    if (difficulty == 1) return "MEDIUM";
     return "HARD";
+}
+
+const char* LevelName(int level) {
+    static const char* names[LEVEL_COUNT] = {
+        "WATERFALL TRAIL", "RIVER CROSSING", "ANCIENT RUINS",
+        "MISTY WOODS", "CRYSTAL CAVES", "SANDSTONE RISE",
+        "FROSTLINE RIDGE", "EMBER PATH", "MOONLIT BRIDGES",
+        "THE FINAL ASCENT"
+    };
+    return names[std::clamp(level, 0, LEVEL_COUNT - 1)];
 }
 
 int StartingLives() {
@@ -165,15 +185,15 @@ bool Button(Rectangle r, const char* label, bool active = true) {
     DrawRectangleRoundedLinesEx(r, 0.22f, 8, 2.0f,
                               active && hover ? C_MINT : Color{ 76, 96, 133, 255 });
     const int fs = 19;
-    const int tw = MeasureText(label, fs);
-    DrawText(label, static_cast<int>(r.x + (r.width - tw) * 0.5f),
+    const int tw = MeasureUIText(label, fs);
+    DrawUIText(label, static_cast<int>(r.x + (r.width - tw) * 0.5f),
              static_cast<int>(r.y + (r.height - fs) * 0.5f - 1),
              fs, active ? C_WHITE_90 : Color{ 133, 145, 165, 255 });
     return active && Pressed(r);
 }
 
 void TextCentered(const char* text, int y, int size, Color color) {
-    DrawText(text, (VIEW_W - MeasureText(text, size)) / 2, y, size, color);
+    DrawUIText(text, (VIEW_W - MeasureUIText(text, size)) / 2, y, size, color);
 }
 
 Sound MakeTone(float frequency, float duration, float volume, bool noisy = false) {
@@ -233,6 +253,65 @@ void CloseGameAudio() {
     UnloadSound(sfxMenu);
     CloseAudioDevice();
     audioReady = false;
+}
+
+
+void LoadReadableFont() {
+    uiFont = GetFontDefault();
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    const char* paths[] = {
+        "assets/Roboto-Regular.ttf",
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/Roboto-Medium.ttf"
+    };
+#elif defined(_WIN32)
+    const char* paths[] = {
+        "assets/Roboto-Regular.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf"
+    };
+#else
+    const char* paths[] = {
+        "assets/Roboto-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"
+    };
+#endif
+    for (const char* path : paths) {
+        if (!FileExists(path)) continue;
+        Font candidate = LoadFontEx(path, 64, nullptr, 0);
+        if (candidate.texture.id != 0) {
+            uiFont = candidate;
+            customUiFont = true;
+            SetTextureFilter(uiFont.texture, TEXTURE_FILTER_BILINEAR);
+            TraceLog(LOG_INFO, "UI: Loaded readable font from %s", path);
+            return;
+        }
+    }
+    TraceLog(LOG_WARNING, "UI: No system TTF font found; using raylib default font");
+}
+
+void UnloadReadableFont() {
+    if (customUiFont) UnloadFont(uiFont);
+    uiFont = {};
+    customUiFont = false;
+}
+
+void DrawUIText(const char* text, int x, int y, int size, Color color) {
+    if (text == nullptr) return;
+    if (uiFont.texture.id == 0) uiFont = GetFontDefault();
+    DrawTextEx(uiFont, text, { static_cast<float>(x), static_cast<float>(y) },
+               static_cast<float>(size),
+               std::max(0.5f, static_cast<float>(size) * 0.015f), color);
+}
+
+int MeasureUIText(const char* text, int size) {
+    if (text == nullptr) return 0;
+    if (uiFont.texture.id == 0) uiFont = GetFontDefault();
+    const Vector2 measured = MeasureTextEx(
+        uiFont, text, static_cast<float>(size),
+        std::max(0.5f, static_cast<float>(size) * 0.015f));
+    return static_cast<int>(std::ceil(measured.x));
 }
 
 void SpawnParticles(Vector2 pos, Color color, int amount = 16) {
@@ -334,14 +413,17 @@ void AddCoin(float x, float y, float phase) {
 }
 
 void AddEnemy(float x, float y, float minX, float maxX, float baseSpeed) {
-    float scale = difficulty == 0 ? 0.78f : (difficulty == 2 ? 1.35f : 1.0f);
-    // Keep the enemy feet on the same platform while giving the silhouette more room.
+    const float modeScale = difficulty == 0 ? 0.78f : (difficulty == 2 ? 1.30f : 1.0f);
+    const float progressionScale = 1.0f + static_cast<float>(levelIndex) * 0.035f;
+    // Keep enemy feet aligned to visible platform tops.
     enemies.push_back({ { x, y - 5.0f, 36.0f, 32.0f }, minX, maxX,
-                        baseSpeed * scale, 1, true });
+                        baseSpeed * modeScale * progressionScale, 1, true });
 }
 
 void LoadLevel(int which) {
-    levelIndex = std::clamp(which, 0, 2);
+    levelIndex = std::clamp(which, 0, LEVEL_COUNT - 1);
+    // Ten longer routes; every stage grows slightly and has its own visual theme/layout.
+    WORLD_W = 3550.0f + static_cast<float>(levelIndex) * 180.0f;
     platforms.clear();
     spikes.clear();
     coins.clear();
@@ -356,8 +438,8 @@ void LoadLevel(int which) {
             { { 1840, 440, 240, 100 } }, { { 2110, 395, 180, 30 } },
             { { 2350, 450, 490, 100 } }
         };
-        spikes = { { { 248, 444, 52, 26 } }, { { 1080, 424, 54, 26 } },
-                   { { 1915, 414, 50, 26 } }, { { 2490, 424, 50, 26 } } };
+        spikes = { { { 248, 444, 52, 26 }, 0 }, { { 1080, 424, 54, 26 }, 0 },
+                   { { 1915, 414, 50, 26 }, 0 }, { { 2490, 424, 50, 26 }, 0 } };
         AddCoin(180, 423, 0.0f); AddCoin(360, 420, 1.0f);
         AddCoin(575, 385, 2.0f); AddCoin(635, 385, 3.0f);
         AddCoin(805, 340, 1.5f); AddCoin(865, 340, 2.5f);
@@ -376,8 +458,8 @@ void LoadLevel(int which) {
             { { 2010, 455, 270, 100 } }, { { 2340, 395, 160, 30 } },
             { { 2550, 450, 290, 100 } }
         };
-        spikes = { { { 176, 444, 55, 26 } }, { { 1075, 439, 54, 26 } },
-                   { { 2070, 429, 50, 26 } }, { { 2620, 424, 52, 26 } } };
+        spikes = { { { 176, 444, 55, 26 }, 1 }, { { 1075, 439, 54, 26 }, 1 },
+                   { { 2070, 429, 50, 26 }, 1 }, { { 2620, 424, 52, 26 }, 1 } };
         AddCoin(270, 420, 0.0f); AddCoin(430, 380, 1.0f);
         AddCoin(630, 330, 2.0f); AddCoin(840, 375, 3.0f);
         AddCoin(1180, 415, 1.5f); AddCoin(1415, 365, 0.5f);
@@ -387,7 +469,7 @@ void LoadLevel(int which) {
         AddEnemy(830, 393, 800, 950, 83.0f);
         AddEnemy(1830, 378, 1810, 1915, 94.0f);
         AddEnemy(2580, 423, 2560, 2790, 108.0f);
-    } else {
+    } else if (levelIndex == 2) {
         platforms = {
             { { 0, 470, 300, 100 } }, { { 355, 420, 130, 30 } },
             { { 530, 365, 130, 30 } }, { { 715, 410, 135, 30 } },
@@ -397,8 +479,8 @@ void LoadLevel(int which) {
             { { 2285, 390, 145, 30 } }, { { 2480, 340, 145, 30 } },
             { { 2670, 450, 170, 100 } }
         };
-        spikes = { { { 130, 444, 54, 26 } }, { { 1145, 429, 56, 26 } },
-                   { { 2040, 429, 55, 26 } }, { { 2700, 424, 52, 26 } } };
+        spikes = { { { 130, 444, 54, 26 }, 2 }, { { 1145, 429, 56, 26 }, 2 },
+                   { { 2040, 429, 55, 26 }, 2 }, { { 2700, 424, 52, 26 }, 2 } };
         AddCoin(225, 420, 0.0f); AddCoin(390, 375, 1.0f);
         AddCoin(570, 320, 2.0f); AddCoin(755, 365, 3.0f);
         AddCoin(940, 305, 0.5f); AddCoin(1190, 405, 1.5f);
@@ -409,6 +491,100 @@ void LoadLevel(int which) {
         AddEnemy(920, 323, 910, 1030, 110.0f);
         AddEnemy(1450, 368, 1430, 1520, 120.0f);
         AddEnemy(2320, 363, 2300, 2410, 125.0f);
+    } else {
+        // New stages use a longer handcrafted-feeling route generated from a fixed layout seed.
+        // Gaps and height changes are deliberately bounded so every jump is possible.
+        platforms.push_back({ { 0, 470, 300, 100 } });
+    }
+
+    auto buildRoute = [&](float routeStart, float startY) {
+        const float routeEnd = WORLD_W - 260.0f;
+        const float routeSpan = routeEnd - routeStart;
+        const int segments = std::max(1, static_cast<int>(std::round(routeSpan / 225.0f)));
+        const float spacing = routeSpan / static_cast<float>(segments);
+        const float topHeights[8] = { 445.0f, 410.0f, 375.0f, 430.0f,
+                                      355.0f, 400.0f, 370.0f, 440.0f };
+        float previousY = startY;
+
+        for (int i = 0; i < segments; ++i) {
+            const float x = routeStart + spacing * static_cast<float>(i);
+            const int pattern = (i * 3 + levelIndex * 5) % 8;
+            float y = (i == 0) ? startY : topHeights[pattern];
+            // Keep vertical jump height within a fair range.
+            y = std::clamp(y, previousY - 54.0f, previousY + 46.0f);
+            y = std::clamp(y, 345.0f, 455.0f);
+
+            float gap = 34.0f + static_cast<float>((i * 7 + levelIndex * 11) % 25);
+            if (difficulty == 2) gap += 8.0f;
+            if (levelIndex >= 7) gap += 4.0f;
+            gap = std::min(gap, spacing - 118.0f);
+            float width = spacing - gap;
+            if (difficulty == 2 && levelIndex >= 6) width = std::max(112.0f, width - 8.0f);
+
+            Platform plat;
+            plat.box = { x, y, width, (y >= 448.0f) ? 100.0f : 28.0f };
+            if (levelIndex >= 3 && levelIndex % 3 == 0 && i > 1 && i % 5 == 2) {
+                plat.moving = true;
+                plat.originX = x;
+                plat.travel = 15.0f + static_cast<float>(levelIndex - 2) * 2.0f;
+                plat.moveSpeed = 0.65f + static_cast<float>(levelIndex) * 0.055f;
+                plat.phase = static_cast<float>(i) * 0.83f;
+            }
+            platforms.push_back(plat);
+
+            // Readable rewards are placed above safe portions of the platform.
+            if (i % 4 != 2 || difficulty == 0) {
+                AddCoin(x + width * 0.62f, y - 40.0f, static_cast<float>(i) * 0.9f);
+                if (levelIndex >= 5 && i % 6 == 3) {
+                    AddCoin(x + width * 0.72f, y - 72.0f, static_cast<float>(i) * 0.5f);
+                }
+            }
+
+            int hazardEvery = difficulty == 0 ? 4 : (difficulty == 1 ? 3 : 2);
+            if (levelIndex >= 6) hazardEvery = std::max(2, hazardEvery - 1);
+            const bool hazardHere = i > 0 && ((i + levelIndex) % hazardEvery == 0);
+            if (hazardHere && width >= 125.0f) {
+                Spike sp;
+                sp.box = { x + width * 0.25f, y - 26.0f,
+                           std::min(58.0f, width * 0.42f), 26.0f };
+                sp.type = (levelIndex + i) % 4;
+                spikes.push_back(sp);
+            }
+
+            const int enemyEvery = difficulty == 0 ? 6 : (difficulty == 1 ? 4 : 3);
+            if (i > 1 && (i + levelIndex) % enemyEvery == 0 && width >= 135.0f) {
+                const float enemySpeed = 55.0f + static_cast<float>(levelIndex) * 5.0f +
+                                         static_cast<float>(difficulty) * 13.0f;
+                AddEnemy(x + width * 0.36f, y - 27.0f,
+                         x + 2.0f, x + width - 2.0f, enemySpeed);
+            }
+
+            // Floating platforms on selected stages are clearly highlighted and move in a cycle.
+            previousY = y;
+        }
+
+        const float endX = routeEnd;
+        platforms.push_back({ { endX, 450.0f, WORLD_W - endX + 8.0f, 100.0f } });
+        AddCoin(endX + 90.0f, 400.0f, 2.0f);
+    };
+
+    if (levelIndex < 3) buildRoute(2820.0f, 450.0f);
+    else buildRoute(300.0f, 450.0f);
+
+    // Level identity affects visible scenery and hazard art as well as geometry.
+    // Extra challenge items are always drawn and match their collision rectangles.
+    if (levelIndex >= 3) {
+        const int extraCount = (levelIndex - 2) / 2;
+        for (int n = 0; n < extraCount; ++n) {
+            const float x = 470.0f + static_cast<float>(n) * 620.0f +
+                            static_cast<float>(levelIndex % 3) * 54.0f;
+            if (x < WORLD_W - 500.0f) {
+                Spike sp;
+                sp.box = { x, 444.0f, 48.0f, 26.0f };
+                sp.type = (levelIndex + n + 1) % 4;
+                spikes.push_back(sp);
+            }
+        }
     }
 
     player.pos = { 70.0f, 422.0f };
@@ -481,6 +657,19 @@ void UpdateGame(float dt) {
     impactTimer = std::max(0.0f, impactTimer - dt);
     UpdateParticles(dt);
 
+    // Moving platforms are marked with an animated gold rim and carry a standing player.
+    for (auto& p : platforms) {
+        if (!p.moving) continue;
+        const float oldX = p.box.x;
+        p.box.x = p.originX + std::sin(gameClock * p.moveSpeed + p.phase) * p.travel;
+        const float deltaX = p.box.x - oldX;
+        const float playerBottom = player.pos.y + PLAYER_H;
+        const bool standingOn = player.grounded &&
+            std::fabs(playerBottom - p.box.y) <= 4.0f &&
+            player.pos.x + PLAYER_W > oldX && player.pos.x < oldX + p.box.width;
+        if (standingOn) player.pos.x += deltaX;
+    }
+
     if (respawnTimer > 0.0f) {
         respawnTimer = std::max(0.0f, respawnTimer - dt);
         player.pos.x += player.vel.x * dt;
@@ -532,7 +721,9 @@ void UpdateGame(float dt) {
         return;
     }
 
-    const float speed = difficulty == 0 ? 265.0f : (difficulty == 2 ? 325.0f : 295.0f);
+    const float baseSpeed = difficulty == 0 ? 245.0f : (difficulty == 2 ? 325.0f : 285.0f);
+    const float levelSpeedBonus = static_cast<float>(levelIndex) * 3.5f;
+    const float speed = baseSpeed + levelSpeedBonus;
     player.vel.x = move * speed;
     const float previousX = player.pos.x;
     player.pos.x += player.vel.x * dt;
@@ -656,7 +847,7 @@ void UpdateGame(float dt) {
     if (screen == Screen::Playing && player.pos.x > WORLD_W - 135.0f) {
         SpawnParticles({ WORLD_W - 100.0f, 385.0f }, C_MINT, 30);
         PlayFx(sfxLevel);
-        if (levelIndex < 2) {
+        if (levelIndex < LEVEL_COUNT - 1) {
             LoadLevel(levelIndex + 1);
         } else {
             screen = Screen::Victory;
@@ -682,9 +873,13 @@ void DrawBackground(float camX) {
                                  drawW, drawH };
         DrawTexturePro(backgroundTexture, source, dest, { 0.0f, 0.0f },
                        0.0f, WHITE);
-        // Subtle contrast layer keeps the pixel-art scenery bright while separating gameplay.
-        DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
-                               Color{ 12, 32, 58, 18 }, Color{ 9, 22, 37, 68 });
+        // One shared animated GIF, with a subtle biome tint so each level feels different.
+        static const Color tint[LEVEL_COUNT]={
+            {14,64,74,24},{5,105,135,28},{117,75,38,26},{32,104,55,24},{70,72,155,33},
+            {186,104,36,25},{63,141,205,32},{200,48,27,31},{105,66,163,35},{196,130,44,33}
+        };
+        DrawRectangle(0,0,VIEW_W,VIEW_H,tint[levelIndex]);
+        DrawRectangleGradientV(0,0,VIEW_W,VIEW_H,Color{12,32,58,18},Color{9,22,37,55});
         return;
     }
 
@@ -724,27 +919,36 @@ void DrawBackground(float camX) {
 }
 
 void DrawPlatform(const Platform& p) {
-    const Rectangle r = { p.box.x - cameraX, p.box.y, p.box.width, p.box.height };
-    if (r.x > VIEW_W || r.x + r.width < 0) return;
+    const Rectangle r={p.box.x-cameraX,p.box.y,p.box.width,p.box.height};
+    if(r.x>VIEW_W||r.x+r.width<0)return;
 
-    // Dark outline + warm earth make the walkable surface obvious at a glance.
-    DrawRectangleRounded({ r.x, r.y + 6, r.width, r.height }, 0.08f, 5,
-                         Color{ 8, 16, 30, 155 });
-    DrawRectangleRec(r, Color{ 104, 70, 57, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 9),
-                  static_cast<int>(r.width), static_cast<int>(std::max(0.0f, r.height - 9)),
-                  Color{ 75, 49, 48, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y),
-                  static_cast<int>(r.width), 10, Color{ 83, 225, 143, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 10),
-                  static_cast<int>(r.width), 4, Color{ 42, 151, 103, 255 });
-    for (float x = r.x + 13; x < r.x + r.width - 8; x += 37) {
-        DrawRectangle(static_cast<int>(x), static_cast<int>(r.y + 24),
-                      17, 4, Color{ 143, 92, 71, 255 });
+    static const Color tops[LEVEL_COUNT]={
+        {83,225,143,255},{83,213,223,255},{221,191,116,255},{105,209,127,255},
+        {139,197,255,255},{234,177,106,255},{185,230,255,255},{255,113,77,255},
+        {185,151,255,255},{255,217,105,255}
+    };
+    static const Color soils[LEVEL_COUNT]={
+        {75,49,48,255},{41,76,91,255},{91,73,57,255},{37,73,56,255},{48,59,103,255},
+        {100,62,38,255},{55,82,111,255},{81,39,40,255},{47,44,81,255},{76,55,42,255}
+    };
+    const Color top=p.moving?Color{255,220,118,255}:tops[levelIndex];
+    const Color soil=p.moving?Color{56,68,91,255}:soils[levelIndex];
+    DrawRectangleRounded({r.x,r.y+6,r.width,r.height},.08f,5,Color{8,16,30,170});
+    DrawRectangleRec(r,soil);
+    DrawRectangle((int)r.x,(int)(r.y+9),(int)r.width,(int)std::max(0.0f,r.height-9),Color{35,42,57,255});
+    DrawRectangle((int)r.x,(int)r.y,(int)r.width,p.moving?8:10,top);
+    DrawRectangle((int)r.x,(int)(r.y+10),(int)r.width,4,
+                  Color{(unsigned char)(top.r*.55f),(unsigned char)(top.g*.55f),(unsigned char)(top.b*.55f),255});
+    for(float x=r.x+13;x<r.x+r.width-8;x+=37)
+        DrawRectangle((int)x,(int)(r.y+24),17,4,Color{143,92,71,220});
+    DrawRectangleLinesEx(r,1.5f,p.moving?Color{255,245,197,255}:Color{29,36,48,255});
+    if(p.moving) {
+        const float cy=r.y+17;
+        DrawLineEx({r.x+12,cy},{r.x+23,cy},2,Color{255,244,190,255});
+        DrawTriangle({r.x+23,cy},{r.x+18,cy-4},{r.x+18,cy+4},Color{255,244,190,255});
+        DrawLineEx({r.x+r.width-12,cy},{r.x+r.width-23,cy},2,Color{255,244,190,255});
     }
-    DrawRectangleLinesEx(r, 1.5f, Color{ 29, 36, 48, 255 });
 }
-
 void DrawCoin(const Coin& coin) {
     if (coin.taken) return;
     const float bob = std::sin(gameClock * 3.4f + coin.phase) * 4.0f;
@@ -757,32 +961,40 @@ void DrawCoin(const Coin& coin) {
 }
 
 void DrawSpike(const Spike& spike) {
-    const float x = spike.box.x - cameraX;
-    if (x > VIEW_W || x + spike.box.width < 0) return;
-    const int n = std::max(1, static_cast<int>(spike.box.width / 17.0f));
-    const float sw = spike.box.width / n;
+    const float x = spike.box.x - cameraX, y = spike.box.y, w = spike.box.width;
+    if (x > VIEW_W || x + w < 0) return;
 
-    // Bright danger strip matches the actual collision rectangle.
-    DrawRectangleRounded({ x - 2.0f, spike.box.y + spike.box.height - 5.0f,
-                           spike.box.width + 4.0f, 8.0f },
-                         0.25f, 5, Color{ 91, 25, 45, 255 });
-    for (int i = 0; i < n; ++i) {
-        const float x1 = x + i * sw;
-        DrawTriangle({ x1, spike.box.y + spike.box.height },
-                     { x1 + sw * 0.5f, spike.box.y - 2.0f },
-                     { x1 + sw, spike.box.y + spike.box.height },
-                     Color{ 111, 28, 54, 255 });
-        DrawTriangle({ x1 + 1.0f, spike.box.y + spike.box.height - 1.0f },
-                     { x1 + sw * 0.5f, spike.box.y + 2.0f },
-                     { x1 + sw - 1.0f, spike.box.y + spike.box.height - 1.0f },
-                     Color{ 255, 88, 105, 255 });
-        DrawTriangle({ x1 + sw * 0.20f, spike.box.y + spike.box.height - 3.0f },
-                     { x1 + sw * 0.47f, spike.box.y + 7.0f },
-                     { x1 + sw * 0.56f, spike.box.y + spike.box.height - 3.0f },
-                     Color{ 255, 190, 184, 255 });
+    // Each hazard has a unique visible silhouette, aligned to its collision box.
+    if (spike.type == 1) {
+        DrawEllipse((int)(x + w*0.5f), (int)(y+22), w*0.58f, 8, Color{18,49,48,255});
+        DrawCircleV({x+w*0.22f,y+15},13,Color{37,127,84,255});
+        DrawCircleV({x+w*0.48f,y+11},16,Color{66,178,98,255});
+        DrawCircleV({x+w*0.75f,y+15},13,Color{37,127,84,255});
+        DrawTriangle({x+w*.30f,y+9},{x+w*.39f,y+1},{x+w*.45f,y+11},Color{229,255,181,255});
+        DrawTriangle({x+w*.60f,y+10},{x+w*.71f,y+1},{x+w*.76f,y+12},Color{229,255,181,255});
+    } else if (spike.type == 2) {
+        DrawCircleV({x+w*.5f,y+17},23,Color{107,94,255,40});
+        DrawTriangle({x+2,y+26},{x+w*.30f,y+7},{x+w*.45f,y+26},Color{82,80,205,255});
+        DrawTriangle({x+w*.25f,y+26},{x+w*.52f,y-1},{x+w*.74f,y+26},Color{116,194,255,255});
+        DrawTriangle({x+w*.55f,y+26},{x+w*.82f,y+8},{x+w-2,y+26},Color{84,110,225,255});
+        DrawLineEx({x+w*.52f,y+3},{x+w*.52f,y+22},2,Color{230,251,255,255});
+    } else if (spike.type == 3) {
+        DrawCircleV({x+w*.5f,y+19},23,Color{255,74,30,42});
+        DrawTriangle({x+2,y+26},{x+w*.24f,y+9},{x+w*.42f,y+26},Color{196,48,40,255});
+        DrawTriangle({x+w*.25f,y+26},{x+w*.53f,y+1+std::sin(gameClock*8)*2},{x+w*.70f,y+26},Color{255,109,48,255});
+        DrawTriangle({x+w*.39f,y+26},{x+w*.53f,y+10},{x+w*.63f,y+26},Color{255,219,119,255});
+        DrawRectangle((int)x,(int)(y+24),(int)w,4,Color{118,37,42,255});
+    } else {
+        const int n=std::max(1,(int)(w/17.0f)); const float sw=w/n;
+        DrawRectangleRounded({x-2,y+20,w+4,8},.25f,5,Color{91,25,45,255});
+        for(int i=0;i<n;++i) {
+            const float x1=x+i*sw;
+            DrawTriangle({x1,y+26},{x1+sw*.5f,y-2},{x1+sw,y+26},Color{111,28,54,255});
+            DrawTriangle({x1+1,y+25},{x1+sw*.5f,y+2},{x1+sw-1,y+25},Color{255,88,105,255});
+            DrawTriangle({x1+sw*.20f,y+23},{x1+sw*.47f,y+7},{x1+sw*.56f,y+23},Color{255,190,184,255});
+        }
     }
 }
-
 void DrawEnemy(const Enemy& e) {
     if (!e.alive) return;
     const float x = e.box.x - cameraX;
@@ -825,7 +1037,7 @@ void DrawPlayerFallback() {
                 Color{ 226, 255, 241, 255 });
     DrawCircleV({ x + PLAYER_W * 0.5f - 4.0f, player.pos.y + 13.0f }, 2.0f, C_INK);
     DrawCircleV({ x + PLAYER_W * 0.5f + 4.0f, player.pos.y + 13.0f }, 2.0f, C_INK);
-    if (damaged) DrawText("HIT", static_cast<int>(x), static_cast<int>(player.pos.y - 18), 14, C_CORAL);
+    if (damaged) DrawUIText("HIT", static_cast<int>(x), static_cast<int>(player.pos.y - 18), 14, C_CORAL);
 }
 
 void DrawPlayer() {
@@ -893,7 +1105,7 @@ void DrawPlayer() {
         DrawCircleLines(static_cast<int>(screenX + PLAYER_W * 0.5f),
                         static_cast<int>(bottom - spriteH * 0.47f),
                         ring, Color{ 255, 81, 111, 230 });
-        DrawText("HIT", static_cast<int>(screenX - 1.0f),
+        DrawUIText("HIT", static_cast<int>(screenX - 1.0f),
                  static_cast<int>(bottom - spriteH - 8.0f), 14, Color{ 255, 225, 224, 255 });
     }
 }
@@ -903,7 +1115,7 @@ void DrawGoal() {
     DrawRectangle(static_cast<int>(x), 360, 5, 90, Color{ 234, 244, 255, 240 });
     DrawTriangle({ x + 5, 360 }, { x + 63, 378 }, { x + 5, 397 }, C_MINT);
     DrawCircle(static_cast<int>(x + 2), 355, 6, C_GOLD);
-    DrawText("GOAL", static_cast<int>(x - 12), 408, 12, C_WHITE_90);
+    DrawUIText("GOAL", static_cast<int>(x - 12), 408, 12, C_WHITE_90);
 }
 
 void DrawParticles() {
@@ -934,7 +1146,7 @@ void DrawTouchControls() {
                  { left.x + 43, left.y + 49 }, C_WHITE_90);
     DrawTriangle({ right.x + 46, right.y + 34 }, { right.x + 25, right.y + 19 },
                  { right.x + 25, right.y + 49 }, C_WHITE_90);
-    DrawText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
+    DrawUIText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
              16, C_WHITE_90);
 #endif
 }
@@ -953,7 +1165,7 @@ void DrawScoreNotice() {
     const float y = scoreNoticePos.y - 18.0f - elapsed * 40.0f;
     const unsigned char alpha = static_cast<unsigned char>(
         255.0f * std::clamp(scoreNoticeTimer / 0.20f, 0.0f, 1.0f));
-    DrawText(TextFormat("+%d", scoreNoticeValue), static_cast<int>(x - 8.0f),
+    DrawUIText(TextFormat("+%d", scoreNoticeValue), static_cast<int>(x - 8.0f),
              static_cast<int>(y), 20, Color{ 255, 232, 133, alpha });
 }
 
@@ -996,28 +1208,30 @@ void DrawDamageFeedback() {
                                 Color{ 255, 90, 117, alpha });
     DrawTriangle({ 329, 105 }, { 351, 145 }, { 307, 145 },
                  Color{ 255, 91, 110, alpha });
-    DrawText("!", 324, 113, 25, Color{ 54, 18, 33, 255 });
-    DrawText(pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE",
+    DrawUIText("!", 324, 113, 25, Color{ 54, 18, 33, 255 });
+    DrawUIText(pendingGameOver ? "FINAL HIT!" : "DAMAGE!  -1 LIFE",
              365, 101, 24, Color{ 255, 164, 173, alpha });
-    DrawText(pendingGameOver ? "No lives left" : "Knocked back - respawning",
+    DrawUIText(pendingGameOver ? "No lives left" : "Knocked back - respawning",
              366, 133, 13, C_WHITE_90);
 }
 
 void DrawHud() {
     DrawRectangleRounded({ 16, 15, 288, 58 }, 0.18f, 8, Color{ 13, 26, 45, 205 });
-    DrawText(TextFormat("LEVEL %d / 3", levelIndex + 1), 30, 24, 14,
+    DrawUIText(TextFormat("LEVEL %02d / %02d", levelIndex + 1, LEVEL_COUNT), 30, 21, 13,
              Color{ 159, 190, 220, 255 });
-    DrawText(TextFormat("SCORE %04d", score), 30, 43, 19, C_GOLD);
-    DrawText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
+    DrawUIText(LevelName(levelIndex), 30, 36, 10,
+             Color{ 159, 216, 208, 255 });
+    DrawUIText(TextFormat("SCORE %04d", score), 30, 48, 18, C_GOLD);
+    DrawUIText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
     for (int i = 0; i < StartingLives(); ++i) {
         const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
         DrawHeart(204.0f + i * 17.0f, 50.0f, heart);
     }
 
     DrawRectangleRounded({ 768, 17, 174, 42 }, 0.20f, 7, Color{ 13, 26, 45, 205 });
-    DrawText(DifficultyName(), 785, 29, 15, C_WHITE_90);
+    DrawUIText(DifficultyName(), 785, 29, 15, C_WHITE_90);
     if (Button({ 891, 20, 39, 36 }, "II")) screen = Screen::Paused;
-    DrawText("ESC / P = PAUSE", 766, 65, 10, Color{ 225, 239, 250, 170 });
+    DrawUIText("ESC / P = PAUSE", 766, 65, 10, Color{ 225, 239, 250, 170 });
 }
 
 void DrawGame() {
@@ -1074,10 +1288,10 @@ void DrawTitle() {
                                 Color{ 88, 136, 164, 150 });
     DrawRectangleRounded({ 72, 71, 205, 28 }, 0.45f, 8,
                          Color{ 35, 96, 91, 220 });
-    DrawText("A TINY PLATFORM ADVENTURE", 84, 79, 11, C_MINT);
-    DrawText("TINY", 75, 120, 54, C_WHITE_90);
-    DrawText("TRAILS", 73, 169, 58, C_MINT);
-    DrawText("JUMP  /  COLLECT  /  SURVIVE", 80, 239, 15,
+    DrawUIText("A TINY PLATFORM ADVENTURE", 84, 79, 11, C_MINT);
+    DrawUIText("TINY", 75, 120, 54, C_WHITE_90);
+    DrawUIText("TRAILS", 73, 169, 58, C_MINT);
+    DrawUIText("JUMP  /  COLLECT  /  SURVIVE", 80, 239, 15,
              Color{ 201, 224, 239, 255 });
 
     // Floating islands make the game identity readable before pressing Play.
@@ -1091,10 +1305,10 @@ void DrawTitle() {
     DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
     DrawCircleV({ 353, 297 }, 8, C_GOLD);
     DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
-    DrawText("3 LEVELS", 81, 427, 17, C_GOLD);
-    DrawText("Easy, Normal and Hard difficulty", 81, 454, 14,
+    DrawUIText("10 LEVELS", 81, 427, 17, C_GOLD);
+    DrawUIText("Easy, Medium and Hard difficulty", 81, 454, 14,
              Color{ 177, 203, 223, 255 });
-    DrawText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
+    DrawUIText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
              Color{ 145, 180, 205, 255 });
 
     // Right-hand action card.
@@ -1102,8 +1316,8 @@ void DrawTitle() {
                          Color{ 10, 21, 40, 238 });
     DrawRectangleRoundedLinesEx({ 527, 42, 391, 456 }, 0.07f, 12, 2.0f,
                                 Color{ 79, 121, 158, 220 });
-    DrawText("MAIN MENU", 570, 76, 23, C_WHITE_90);
-    DrawText("Choose your next move", 570, 106, 14,
+    DrawUIText("MAIN MENU", 570, 76, 23, C_WHITE_90);
+    DrawUIText("Choose your next move", 570, 106, 14,
              Color{ 160, 191, 216, 255 });
     DrawRectangle(570, 132, 305, 1, Color{ 77, 104, 137, 190 });
 
@@ -1120,10 +1334,10 @@ void DrawTitle() {
 
     DrawRectangleRounded({ 570, 372, 305, 71 }, 0.12f, 8,
                          Color{ 22, 42, 64, 255 });
-    DrawText("BEST RUN", 590, 385, 11, Color{ 151, 183, 207, 255 });
-    DrawText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
-    DrawText("Collect coins. Reach the flag.", 688, 402, 12, C_WHITE_90);
-    DrawText("ESC / P pauses during a run", 570, 460, 12,
+    DrawUIText("BEST RUN", 590, 385, 11, Color{ 151, 183, 207, 255 });
+    DrawUIText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
+    DrawUIText("Collect coins. Reach the flag.", 688, 402, 12, C_WHITE_90);
+    DrawUIText("ESC / P pauses during a run", 570, 460, 12,
              Color{ 153, 183, 207, 255 });
 }
 
@@ -1134,14 +1348,14 @@ void DrawControlsScreen() {
     TextCentered("TINY TRAILS", 76, 38, C_WHITE_90);
     DrawRectangleRounded({ 225, 150, 510, 290 }, 0.06f, 8, Color{ 12, 23, 43, 248 });
     TextCentered("HOW TO PLAY", 174, 28, C_MINT);
-    DrawText("MOVE", 275, 226, 17, C_GOLD);
-    DrawText("A / D or arrow keys", 425, 226, 17, C_WHITE_90);
-    DrawText("JUMP", 275, 263, 17, C_GOLD);
-    DrawText("Space / W / Up", 425, 263, 17, C_WHITE_90);
-    DrawText("CONTROLLER", 275, 300, 17, C_GOLD);
-    DrawText("D-pad or left stick + A button", 425, 300, 15, C_WHITE_90);
-    DrawText("MOBILE", 275, 337, 17, C_GOLD);
-    DrawText("Use the on-screen arrows and JUMP", 425, 337, 15, C_WHITE_90);
+    DrawUIText("MOVE", 275, 226, 17, C_GOLD);
+    DrawUIText("A / D or arrow keys", 425, 226, 17, C_WHITE_90);
+    DrawUIText("JUMP", 275, 263, 17, C_GOLD);
+    DrawUIText("Space / W / Up", 425, 263, 17, C_WHITE_90);
+    DrawUIText("CONTROLLER", 275, 300, 17, C_GOLD);
+    DrawUIText("D-pad or left stick + A button", 425, 300, 15, C_WHITE_90);
+    DrawUIText("MOBILE", 275, 337, 17, C_GOLD);
+    DrawUIText("Use the on-screen arrows and JUMP", 425, 337, 15, C_WHITE_90);
     if (Button({ 370, 381, 220, 42 }, "BACK")) screen = Screen::Menu;
 }
 
@@ -1190,6 +1404,7 @@ int main() {
     SetTargetFPS(60);
     SetWindowMinSize(800, 450);
     LoadGameAssets();
+    LoadReadableFont();
     InitGameAudio();
     canvas = LoadRenderTexture(VIEW_W, VIEW_H);
     SetTextureFilter(canvas.texture, TEXTURE_FILTER_BILINEAR);
@@ -1243,6 +1458,7 @@ int main() {
     UnloadRenderTexture(canvas);
     UnloadGameAssets();
     CloseGameAudio();
+    UnloadReadableFont();
     CloseWindow();
     return 0;
 }
