@@ -14,14 +14,14 @@ constexpr float PLAYER_H = 38.0f;
 constexpr float GRAVITY = 1120.0f;
 constexpr float JUMP_SPEED = 485.0f;
 
-const Color INK       = { 17, 25, 47, 255 };
-const Color PANEL     = { 26, 39, 68, 245 };
-const Color PANEL_LIT = { 39, 57, 91, 255 };
-const Color MINT      = { 107, 245, 190, 255 };
-const Color SKY_BLUE  = { 93, 190, 255, 255 };
-const Color GOLD      = { 255, 211, 92, 255 };
-const Color CORAL     = { 255, 112, 125, 255 };
-const Color WHITE_90  = { 242, 247, 255, 235 };
+const Color C_INK       = { 17, 25, 47, 255 };
+const Color C_PANEL     = { 26, 39, 68, 245 };
+const Color C_PANEL_LIT = { 39, 57, 91, 255 };
+const Color C_MINT      = { 107, 245, 190, 255 };
+const Color C_SKY_BLUE  = { 93, 190, 255, 255 };
+const Color C_GOLD      = { 255, 211, 92, 255 };
+const Color C_CORAL     = { 255, 112, 125, 255 };
+const Color C_WHITE_90  = { 242, 247, 255, 235 };
 
 enum class Screen { Menu, Controls, Playing, Paused, GameOver, Victory };
 
@@ -134,15 +134,15 @@ bool Held(Rectangle r) {
 bool Button(Rectangle r, const char* label, bool active = true) {
     const bool hover = PointerInside(r);
     const Color fill = !active ? Color{ 39, 46, 64, 255 }
-                              : (hover ? PANEL_LIT : PANEL);
+                              : (hover ? C_PANEL_LIT : C_PANEL);
     DrawRectangleRounded(r, 0.22f, 8, fill);
     DrawRectangleRoundedLinesEx(r, 0.22f, 8, 2.0f,
-                              active && hover ? MINT : Color{ 76, 96, 133, 255 });
+                              active && hover ? C_MINT : Color{ 76, 96, 133, 255 });
     const int fs = 19;
     const int tw = MeasureText(label, fs);
     DrawText(label, static_cast<int>(r.x + (r.width - tw) * 0.5f),
              static_cast<int>(r.y + (r.height - fs) * 0.5f - 1),
-             fs, active ? WHITE_90 : Color{ 133, 145, 165, 255 });
+             fs, active ? C_WHITE_90 : Color{ 133, 145, 165, 255 });
     return active && Pressed(r);
 }
 
@@ -264,7 +264,7 @@ void TakeHit() {
     --player.lives;
     hurtFlash = 1.1f;
     SpawnParticles({ player.pos.x + PLAYER_W * 0.5f,
-                     player.pos.y + PLAYER_H * 0.5f }, CORAL, 22);
+                     player.pos.y + PLAYER_H * 0.5f }, C_CORAL, 22);
     player.pos = { 70.0f, 432.0f };
     player.vel = { 0.0f, 0.0f };
     player.grounded = false;
@@ -364,7 +364,7 @@ void UpdateGame(float dt) {
             coin.taken = true;
             score += 10;
             highScore = std::max(highScore, score);
-            SpawnParticles(coin.center, GOLD, 10);
+            SpawnParticles(coin.center, C_GOLD, 10);
         }
     }
 
@@ -389,7 +389,7 @@ void UpdateGame(float dt) {
             if (player.vel.y > 20.0f && oldBottom <= e.box.y + 14.0f) {
                 e.alive = false;
                 player.vel.y = -JUMP_SPEED * 0.58f;
-                SpawnParticles({ e.box.x + 15.0f, e.box.y + 10.0f }, CORAL, 15);
+                SpawnParticles({ e.box.x + 15.0f, e.box.y + 10.0f }, C_CORAL, 15);
                 score += 25;
                 highScore = std::max(highScore, score);
             } else {
@@ -406,7 +406,7 @@ void UpdateGame(float dt) {
     cameraX += (targetCamera - cameraX) * std::min(1.0f, dt * 5.0f);
 
     if (screen == Screen::Playing && player.pos.x > WORLD_W - 135.0f) {
-        SpawnParticles({ WORLD_W - 100.0f, 385.0f }, MINT, 26);
+        SpawnParticles({ WORLD_W - 100.0f, 385.0f }, C_MINT, 26);
         if (levelIndex < 2) {
             LoadLevel(levelIndex + 1);
         } else {
@@ -478,7 +478,7 @@ void DrawCoin(const Coin& coin) {
     const Vector2 c = { coin.center.x - cameraX, coin.center.y + bob };
     if (c.x < -30 || c.x > VIEW_W + 30) return;
     DrawCircleV({ c.x, c.y }, 13, Color{ 255, 199, 65, 42 });
-    DrawCircleV(c, 9, GOLD);
+    DrawCircleV(c, 9, C_GOLD);
     DrawCircleLines(static_cast<int>(c.x), static_cast<int>(c.y), 9, Color{ 255, 244, 180, 255 });
     DrawCircleV({ c.x - 2.0f, c.y - 2.0f }, 2.7f, Color{ 255, 248, 205, 255 });
 }
@@ -508,11 +508,11 @@ void DrawEnemy(const Enemy& e) {
     DrawRectangleRounded({ x, e.box.y + 4, e.box.width, e.box.height - 4 },
                          0.35f, 6, Color{ 172, 72, 105, 255 });
     DrawRectangleRounded({ x + 3, e.box.y, e.box.width - 6, e.box.height - 7 },
-                         0.35f, 6, CORAL);
+                         0.35f, 6, C_CORAL);
     DrawCircle(static_cast<int>(x + 10), static_cast<int>(e.box.y + 10), 3.0f, WHITE);
     DrawCircle(static_cast<int>(x + 21), static_cast<int>(e.box.y + 10), 3.0f, WHITE);
-    DrawCircle(static_cast<int>(x + 11 + e.direction), static_cast<int>(e.box.y + 10), 1.4f, INK);
-    DrawCircle(static_cast<int>(x + 22 + e.direction), static_cast<int>(e.box.y + 10), 1.4f, INK);
+    DrawCircle(static_cast<int>(x + 11 + e.direction), static_cast<int>(e.box.y + 10), 1.4f, C_INK);
+    DrawCircle(static_cast<int>(x + 22 + e.direction), static_cast<int>(e.box.y + 10), 1.4f, C_INK);
 }
 
 void DrawPlayer() {
@@ -533,8 +533,8 @@ void DrawPlayer() {
     DrawCircle(static_cast<int>(x + 11), static_cast<int>(y + 14), 3.1f, WHITE);
     DrawCircle(static_cast<int>(x + 21), static_cast<int>(y + 14), 3.1f, WHITE);
     const float look = player.vel.x > 0.0f ? 1.0f : (player.vel.x < 0.0f ? -1.0f : 0.0f);
-    DrawCircle(static_cast<int>(x + 11 + look), static_cast<int>(y + 14), 1.5f, INK);
-    DrawCircle(static_cast<int>(x + 21 + look), static_cast<int>(y + 14), 1.5f, INK);
+    DrawCircle(static_cast<int>(x + 11 + look), static_cast<int>(y + 14), 1.5f, C_INK);
+    DrawCircle(static_cast<int>(x + 21 + look), static_cast<int>(y + 14), 1.5f, C_INK);
     DrawRectangleRounded({ x + 5, y + PLAYER_H - 5, 7, 8 }, 0.3f, 4,
                          Color{ 36, 91, 116, 255 });
     DrawRectangleRounded({ x + 17, y + PLAYER_H - 5, 7, 8 }, 0.3f, 4,
@@ -544,9 +544,9 @@ void DrawPlayer() {
 void DrawGoal() {
     const float x = WORLD_W - 105.0f - cameraX;
     DrawRectangle(static_cast<int>(x), 360, 5, 90, Color{ 234, 244, 255, 240 });
-    DrawTriangle({ x + 5, 360 }, { x + 63, 378 }, { x + 5, 397 }, MINT);
-    DrawCircle(static_cast<int>(x + 2), 355, 6, GOLD);
-    DrawText("GOAL", static_cast<int>(x - 12), 408, 12, WHITE_90);
+    DrawTriangle({ x + 5, 360 }, { x + 63, 378 }, { x + 5, 397 }, C_MINT);
+    DrawCircle(static_cast<int>(x + 2), 355, 6, C_GOLD);
+    DrawText("GOAL", static_cast<int>(x - 12), 408, 12, C_WHITE_90);
 }
 
 void DrawParticles() {
@@ -573,23 +573,23 @@ void DrawTouchControls() {
     DrawCircleLines(static_cast<int>(jump.x + 39), static_cast<int>(jump.y + 39),
                     36, Color{ 128, 255, 208, 190 });
     DrawTriangle({ left.x + 22, left.y + 34 }, { left.x + 43, left.y + 19 },
-                 { left.x + 43, left.y + 49 }, WHITE_90);
+                 { left.x + 43, left.y + 49 }, C_WHITE_90);
     DrawTriangle({ right.x + 46, right.y + 34 }, { right.x + 25, right.y + 19 },
-                 { right.x + 25, right.y + 49 }, WHITE_90);
+                 { right.x + 25, right.y + 49 }, C_WHITE_90);
     DrawText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
-             16, WHITE_90);
+             16, C_WHITE_90);
 }
 
 void DrawHud() {
     DrawRectangleRounded({ 16, 15, 288, 58 }, 0.18f, 8, Color{ 13, 26, 45, 205 });
     DrawText(TextFormat("LEVEL %d / 3", levelIndex + 1), 30, 24, 14,
              Color{ 159, 190, 220, 255 });
-    DrawText(TextFormat("SCORE %04d", score), 30, 43, 19, GOLD);
+    DrawText(TextFormat("SCORE %04d", score), 30, 43, 19, C_GOLD);
     DrawText(TextFormat("LIVES %d", player.lives), 192, 43, 17,
-             player.lives <= 2 ? CORAL : MINT);
+             player.lives <= 2 ? C_CORAL : C_MINT);
 
     DrawRectangleRounded({ 768, 17, 174, 42 }, 0.20f, 7, Color{ 13, 26, 45, 205 });
-    DrawText(DifficultyName(), 785, 29, 15, WHITE_90);
+    DrawText(DifficultyName(), 785, 29, 15, C_WHITE_90);
     if (Button({ 891, 20, 39, 36 }, "II")) screen = Screen::Paused;
     DrawText("ESC / P = PAUSE", 766, 65, 10, Color{ 225, 239, 250, 170 });
 }
@@ -614,8 +614,8 @@ void DrawTitle() {
     DrawCircle(480, 126, 78, Color{ 105, 245, 190, 18 });
     DrawCircleLines(480, 126, 68, Color{ 129, 255, 210, 110 });
     DrawCircleLines(480, 126, 56, Color{ 129, 255, 210, 70 });
-    TextCentered("TINY TRAILS", 82, 48, WHITE_90);
-    TextCentered("A little platform adventure", 137, 18, MINT);
+    TextCentered("TINY TRAILS", 82, 48, C_WHITE_90);
+    TextCentered("A little platform adventure", 137, 18, C_MINT);
     DrawRectangleRounded({ 332, 183, 296, 333 }, 0.08f, 12,
                          Color{ 10, 22, 40, 205 });
     DrawRectangleRoundedLinesEx({ 332, 183, 296, 333 }, 0.08f, 12,
@@ -639,17 +639,17 @@ void DrawControlsScreen() {
     DrawBackground(0.0f);
     DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
                            Color{ 10, 17, 38, 165 }, Color{ 13, 28, 48, 110 });
-    TextCentered("TINY TRAILS", 76, 38, WHITE_90);
+    TextCentered("TINY TRAILS", 76, 38, C_WHITE_90);
     DrawRectangleRounded({ 225, 150, 510, 290 }, 0.06f, 8, Color{ 12, 23, 43, 248 });
-    TextCentered("HOW TO PLAY", 174, 28, MINT);
-    DrawText("MOVE", 275, 226, 17, GOLD);
-    DrawText("A / D or arrow keys", 425, 226, 17, WHITE_90);
-    DrawText("JUMP", 275, 263, 17, GOLD);
-    DrawText("Space / W / Up", 425, 263, 17, WHITE_90);
-    DrawText("CONTROLLER", 275, 300, 17, GOLD);
-    DrawText("D-pad or left stick + A button", 425, 300, 15, WHITE_90);
-    DrawText("MOBILE", 275, 337, 17, GOLD);
-    DrawText("Use the on-screen arrows and JUMP", 425, 337, 15, WHITE_90);
+    TextCentered("HOW TO PLAY", 174, 28, C_MINT);
+    DrawText("MOVE", 275, 226, 17, C_GOLD);
+    DrawText("A / D or arrow keys", 425, 226, 17, C_WHITE_90);
+    DrawText("JUMP", 275, 263, 17, C_GOLD);
+    DrawText("Space / W / Up", 425, 263, 17, C_WHITE_90);
+    DrawText("CONTROLLER", 275, 300, 17, C_GOLD);
+    DrawText("D-pad or left stick + A button", 425, 300, 15, C_WHITE_90);
+    DrawText("MOBILE", 275, 337, 17, C_GOLD);
+    DrawText("Use the on-screen arrows and JUMP", 425, 337, 15, C_WHITE_90);
     if (Button({ 370, 381, 220, 42 }, "BACK")) screen = Screen::Menu;
 }
 
@@ -659,7 +659,7 @@ void DrawOverlay(const char* title, const char* subtitle) {
     DrawRectangleRounded({ 268, 144, 424, 252 }, 0.07f, 10, Color{ 18, 31, 54, 248 });
     DrawRectangleRoundedLinesEx({ 268, 144, 424, 252 }, 0.07f, 10, 2,
                               Color{ 83, 130, 163, 220 });
-    TextCentered(title, 177, 32, WHITE_90);
+    TextCentered(title, 177, 32, C_WHITE_90);
     TextCentered(subtitle, 220, 15, Color{ 177, 201, 223, 255 });
 }
 
@@ -719,7 +719,7 @@ int main() {
         }
 
         BeginTextureMode(canvas);
-        ClearBackground(INK);
+        ClearBackground(C_INK);
         switch (screen) {
             case Screen::Menu: DrawTitle(); break;
             case Screen::Controls: DrawControlsScreen(); break;
