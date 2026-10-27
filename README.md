@@ -1,5 +1,60 @@
-# Mini Platformer
+# Tiny Trails — Mini Platformer
 
-A small C++17 2D platformer built with raylib. Desktop keyboard, gamepad, and on-screen touch controls are included in the game code. See build instructions below.
+A small C++17 2D platformer prototype built with [raylib](https://www.raylib.com/). It uses procedural graphics, so no external sprites or asset downloads are needed.
 
-> Project setup is in progress; the rest of the source files will be added next.
+## Features
+
+- Main menu with Play, difficulty selection, and controls
+- Three short levels, platforms, coins, spikes, patrolling enemies, and a goal flag
+- Score, lives, pause, restart, game-over, and victory screens
+- Keyboard, gamepad, and on-screen touch controls
+- Resizable desktop window and landscape Android project
+
+## Controls
+
+| Action | Keyboard | Controller | Touch |
+|---|---|---|---|
+| Move | A/D or Left/Right | D-pad or left stick | Left/right buttons |
+| Jump | Space, W, or Up | A / bottom face button | JUMP button |
+| Pause | Esc or P | — | Pause button |
+
+## Build on Windows with MSYS2 UCRT64
+
+Open **MSYS2 UCRT64** (not PowerShell) and install the dependencies:
+
+\`\`\`bash
+pacman -S --needed git mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+\`\`\`
+
+Clone the project and build it:
+
+\`\`\`bash
+cd /d
+git clone https://github.com/WorkRCS/Mini-Platformer.git
+cd Mini-Platformer
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/TinyTrails.exe
+\`\`\`
+
+If you have already cloned the repository, skip \`git clone\` and \`cd Mini-Platformer\`, then run the CMake commands from the project folder. The game is launched from the MSYS2 terminal so its raylib DLL is available on PATH.
+
+You can also run \`bash build-msys2.sh\` from the project root after installing the dependencies.
+
+## Android
+
+The same game source includes touch controls and raylib gamepad input. Android Studio project files are in the \`android/\` folder. See [android/README.md](android/README.md) for the SDK/NDK requirements and APK build steps.
+
+## Project layout
+
+\`\`\`text
+Mini-Platformer/
+├── src/main.cpp
+├── CMakeLists.txt
+├── build-msys2.sh
+└── android/
+    ├── app/build.gradle
+    └── app/src/main/AndroidManifest.xml
+\`\`\`
+
+The graphics are drawn with raylib primitives and gradients. This keeps the prototype small and avoids extra asset packs.
