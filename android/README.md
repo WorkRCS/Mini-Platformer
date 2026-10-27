@@ -19,6 +19,6 @@ The game source uses raylib's cross-platform input API, including on-screen touc
 
 The app is landscape-oriented and has a Tiny Trails launcher icon. It includes larger on-screen left/right/jump controls and a tap-friendly pause button; simultaneous touches use individual touch IDs so movement and jump can be held together. Bluetooth or USB controllers can use raylib's gamepad mapping.
 
-Optional transparent PNGs in the repository root assets folder are also packaged into the APK: cactus.png (64×96), pillar.png (64×128), platform_large.png (256×64), and platform_small.png (128×32). If omitted, visible built-in fallback art is used.
+The following PNG files in the repository root `assets/` folder are packaged into the APK: `cactus.png` (64×96), `pillar.png` (64×128), `platform_ground.png` (256×64), `platform_medium.png` (192×48), and `platform_small.png` (128×40). Touch-control symbols are drawn in code rather than loaded from images, so they scale with the UI.
 
 If Android Studio reports that the Android SDK or NDK is missing, install it from **Tools > SDK Manager** before building.
