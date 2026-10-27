@@ -2,6 +2,7 @@
 #include "raymath.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -80,6 +81,8 @@ struct Player {
     float hurtFlash = 0.0f;
     float rebirthClock = 0.0f;
     float walkClock = 0.0f;
+    bool moving = false;
+    bool running = false;
     bool grounded = true;
     bool attackHit = false;
     int kills = 0;
@@ -121,11 +124,30 @@ Sound sfxBossRoar = {};
 Sound sfxRebirth = {};
 Sound sfxMenu = {};
 Sound sfxMusic = {};
+struct CharacterAnimationSet {
+    ModelAnimation* clips = nullptr;
+    unsigned int count = 0;
+    int idle = -1;
+    int walk = -1;
+    int run = -1;
+    int attack = -1;
+    int hit = -1;
+    int death = -1;
+    std::vector<float> frameClocks;
+    int lastSelected = -1;
+};
+
 Model natureTree = {};
 Model natureRock = {};
 Model sketchfabHeroModel = {};
 Model sketchfabMonsterModel = {};
 Model sketchfabBossModel = {};
+CharacterAnimationSet heroAnimations;
+CharacterAnimationSet monsterAnimations;
+CharacterAnimationSet bossAnimations;
+float heroGroundOffset = 0.0f;
+float monsterGroundOffset = 0.0f;
+float bossGroundOffset = 0.0f;
 bool treeModelReady = false;
 bool rockModelReady = false;
 bool sketchfabHeroReady = false;
@@ -413,7 +435,8 @@ std::string ResolveAssetPath(const std::string& requestedPath) {
     return executableRelativePath;
 }
 
-Model LoadModelFromPath(const std::string& requestedPath) {
+Model LoadModelFromPath(const std::string& requestedPath, std::string* loadedPath = nullptr) {
+    if (loadedPath != nullptr) loadedPath->clear();
     const std::string path = ResolveAssetPath(requestedPath);
     if (!FileExists(path.c_str())) {
         TraceLog(LOG_DEBUG, "Optional 3D asset not found: %s", path.c_str());
@@ -431,10 +454,12 @@ Model LoadModelFromPath(const std::string& requestedPath) {
     }
 
     TraceLog(LOG_INFO, "Loaded 3D model (%i meshes): %s", model.meshCount, path.c_str());
+    if (loadedPath != nullptr) *loadedPath = path;
     return model;
 }
 
-Model LoadModelFromManifest(const char* manifestPath) {
+Model LoadModelFromManifest(const char* manifestPath, std::string* loadedPath = nullptr) {
+    if (loadedPath != nullptr) loadedPath->clear();
     const std::string resolvedManifest = ResolveAssetPath(manifestPath);
     if (!FileExists(resolvedManifest.c_str())) return Model{};
     char* raw = LoadFileText(resolvedManifest.c_str());
@@ -451,19 +476,119 @@ Model LoadModelFromManifest(const char* manifestPath) {
         TraceLog(LOG_WARNING, "Empty 3D asset manifest: %s", resolvedManifest.c_str());
         return Model{};
     }
-    return LoadModelFromPath(path);
+    return LoadModelFromPath(path, loadedPath);
 }
 
-Model LoadOptionalModelStem(const char* stem) {
+Model LoadOptionalModelStem(const char* stem, std::string* loadedPath = nullptr) {
+    if (loadedPath != nullptr) loadedPath->clear();
     const char* extensions[] = { ".glb", ".gltf" };
     for (const char* ext : extensions) {
         const std::string requestedPath = std::string(stem) + ext;
         const std::string path = ResolveAssetPath(requestedPath);
         if (!FileExists(path.c_str())) continue;
-        Model model = LoadModelFromPath(path);
+        Model model = LoadModelFromPath(path, loadedPath);
         if (model.meshCount > 0) return model;
     }
     return Model{};
+}
+
+std::string Lowercase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+int FindCharacterAnimation(const CharacterAnimationSet& set, const char* keyword) {
+    if (set.clips == nullptr || set.count == 0 || keyword == nullptr) return -1;
+    const std::string target = Lowercase(keyword);
+    for (unsigned int i = 0; i < set.count; ++i) {
+        if (Lowercase(set.clips[i].name) == target) return static_cast<int>(i);
+    }
+    for (unsigned int i = 0; i < set.count; ++i) {
+        if (Lowercase(set.clips[i].name).find(target) != std::string::npos)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void UnloadCharacterAnimations(CharacterAnimationSet& set) {
+    if (set.clips != nullptr) UnloadModelAnimations(set.clips, set.count);
+    set = CharacterAnimationSet{};
+}
+
+void LoadCharacterAnimations(const std::string& modelPath, CharacterAnimationSet& set, const char* slot) {
+    UnloadCharacterAnimations(set);
+    if (modelPath.empty()) return;
+    const std::string path = ResolveAssetPath(modelPath);
+    if (!FileExists(path.c_str())) {
+        TraceLog(LOG_WARNING, "%s animation source not found: %s", slot, path.c_str());
+        return;
+    }
+
+    set.clips = LoadModelAnimations(path.c_str(), &set.count);
+    if (set.clips == nullptr || set.count == 0) {
+        TraceLog(LOG_WARNING, "%s model has no readable animation clips: %s", slot, path.c_str());
+        if (set.clips != nullptr) UnloadModelAnimations(set.clips, set.count);
+        set = CharacterAnimationSet{};
+        return;
+    }
+    set.frameClocks.assign(set.count, 0.0f);
+    set.idle = FindCharacterAnimation(set, "idle");
+    set.walk = FindCharacterAnimation(set, "walk");
+    set.run = FindCharacterAnimation(set, "run");
+    set.attack = FindCharacterAnimation(set, "attack");
+    set.hit = FindCharacterAnimation(set, "hit");
+    set.death = FindCharacterAnimation(set, "death");
+    if (set.idle < 0) set.idle = 0;
+    if (set.walk < 0) set.walk = set.run >= 0 ? set.run : set.idle;
+    if (set.run < 0) set.run = set.walk;
+
+    TraceLog(LOG_INFO, "%s clips: %u (idle=%d, walk=%d, run=%d, attack=%d, hit=%d)",
+             slot, set.count, set.idle, set.walk, set.run, set.attack, set.hit);
+    for (unsigned int i = 0; i < set.count; ++i)
+        TraceLog(LOG_DEBUG, "%s clip %u: '%s' (%d frames)", slot, i, set.clips[i].name, set.clips[i].frameCount);
+}
+
+int ChooseCharacterAnimation(const CharacterAnimationSet& set, bool moving, bool running,
+                             bool attacking = false, bool hurt = false) {
+    if (hurt && set.hit >= 0) return set.hit;
+    if (attacking && set.attack >= 0) return set.attack;
+    if (running && set.run >= 0) return set.run;
+    if (moving && set.walk >= 0) return set.walk;
+    if (set.idle >= 0) return set.idle;
+    if (set.walk >= 0) return set.walk;
+    return set.count > 0 ? 0 : -1;
+}
+
+void ApplyCharacterAnimation(Model model, CharacterAnimationSet& set, int requested, float dt,
+                             bool restartOneShot = true) {
+    if (set.clips == nullptr || set.count == 0) return;
+    int selected = requested;
+    if (selected < 0 || static_cast<unsigned int>(selected) >= set.count)
+        selected = set.idle >= 0 ? set.idle : 0;
+    const ModelAnimation& clip = set.clips[selected];
+    if (model.boneCount <= 0 || clip.boneCount <= 0 || model.boneCount != clip.boneCount || clip.frameCount <= 0)
+        return;
+    if (set.frameClocks.size() != set.count) set.frameClocks.assign(set.count, 0.0f);
+    const bool oneShot = selected == set.attack || selected == set.hit || selected == set.death;
+    if (restartOneShot && oneShot && set.lastSelected != selected)
+        set.frameClocks[static_cast<size_t>(selected)] = 0.0f;
+    set.lastSelected = selected;
+    float& clock = set.frameClocks[static_cast<size_t>(selected)];
+    clock += std::max(0.0f, dt) * 30.0f;
+    const int elapsed = static_cast<int>(clock);
+    const int frame = oneShot ? std::min(elapsed, clip.frameCount - 1) : elapsed % clip.frameCount;
+    UpdateModelAnimation(model, clip, frame);
+}
+
+float ComputeModelGroundOffset(Model model) {
+    if (model.meshCount <= 0 || model.meshes == nullptr) return 0.0f;
+    const BoundingBox bounds = GetModelBoundingBox(model);
+    if (!std::isfinite(bounds.min.y) || !std::isfinite(bounds.max.y)) return 0.0f;
+    const float height = bounds.max.y - bounds.min.y;
+    if (height < 0.05f || height > 100.0f) return 0.0f;
+    const float offset = -bounds.min.y;
+    return std::isfinite(offset) && std::fabs(offset) < 100.0f ? offset : 0.0f;
 }
 
 void LoadOptionalNatureModels() {
@@ -481,32 +606,51 @@ void LoadOptionalNatureModels() {
     rockModelReady = natureRock.meshCount > 0;
 
     // Optional user-installed Sketchfab models override the bundled CC0 defaults.
-    sketchfabHeroModel = LoadOptionalModelStem("assets/3d/sketchfab_hero");
-    if (sketchfabHeroModel.meshCount == 0) sketchfabHeroModel = LoadModelFromManifest("assets/3d/sketchfab_hero_path.txt");
+    std::string heroModelPath;
+    sketchfabHeroModel = LoadOptionalModelStem("assets/3d/sketchfab_hero", &heroModelPath);
+    if (sketchfabHeroModel.meshCount == 0)
+        sketchfabHeroModel = LoadModelFromManifest("assets/3d/sketchfab_hero_path.txt", &heroModelPath);
     heroModelFacesPositiveZ = false;
     if (sketchfabHeroModel.meshCount == 0) {
-        sketchfabHeroModel = LoadOptionalModelStem("assets/3d/cc0_hero");
+        sketchfabHeroModel = LoadOptionalModelStem("assets/3d/cc0_hero", &heroModelPath);
         heroModelFacesPositiveZ = sketchfabHeroModel.meshCount > 0;
     }
     sketchfabHeroReady = sketchfabHeroModel.meshCount > 0;
 
-    sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/sketchfab_monster");
-    if (sketchfabMonsterModel.meshCount == 0) sketchfabMonsterModel = LoadModelFromManifest("assets/3d/sketchfab_monster_path.txt");
+    std::string monsterModelPath;
+    sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/sketchfab_monster", &monsterModelPath);
+    if (sketchfabMonsterModel.meshCount == 0)
+        sketchfabMonsterModel = LoadModelFromManifest("assets/3d/sketchfab_monster_path.txt", &monsterModelPath);
     monsterModelFacesPositiveZ = false;
     if (sketchfabMonsterModel.meshCount == 0) {
-        sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/cc0_monster");
+        sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/cc0_monster", &monsterModelPath);
         monsterModelFacesPositiveZ = sketchfabMonsterModel.meshCount > 0;
     }
     sketchfabMonsterReady = sketchfabMonsterModel.meshCount > 0;
 
-    sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss");
-    if (sketchfabBossModel.meshCount == 0) sketchfabBossModel = LoadModelFromManifest("assets/3d/sketchfab_boss_path.txt");
+    std::string bossModelPath;
+    sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss", &bossModelPath);
+    if (sketchfabBossModel.meshCount == 0)
+        sketchfabBossModel = LoadModelFromManifest("assets/3d/sketchfab_boss_path.txt", &bossModelPath);
     bossModelFacesPositiveZ = false;
     if (sketchfabBossModel.meshCount == 0) {
-        sketchfabBossModel = LoadOptionalModelStem("assets/3d/cc0_boss");
+        sketchfabBossModel = LoadOptionalModelStem("assets/3d/cc0_boss", &bossModelPath);
         bossModelFacesPositiveZ = sketchfabBossModel.meshCount > 0;
     }
     sketchfabBossReady = sketchfabBossModel.meshCount > 0;
+
+    if (sketchfabHeroReady) {
+        heroGroundOffset = ComputeModelGroundOffset(sketchfabHeroModel);
+        LoadCharacterAnimations(heroModelPath, heroAnimations, "hero");
+    }
+    if (sketchfabMonsterReady) {
+        monsterGroundOffset = ComputeModelGroundOffset(sketchfabMonsterModel);
+        LoadCharacterAnimations(monsterModelPath, monsterAnimations, "monster");
+    }
+    if (sketchfabBossReady) {
+        bossGroundOffset = ComputeModelGroundOffset(sketchfabBossModel);
+        LoadCharacterAnimations(bossModelPath, bossAnimations, "boss");
+    }
 
     TraceLog(LOG_INFO,
         "3D asset status: tree=%s, rock=%s, hero=%s, monster=%s, boss=%s",
@@ -520,6 +664,9 @@ void LoadOptionalNatureModels() {
 void UnloadOptionalNatureModels() {
     if (treeModelReady) UnloadModel(natureTree);
     if (rockModelReady) UnloadModel(natureRock);
+    UnloadCharacterAnimations(heroAnimations);
+    UnloadCharacterAnimations(monsterAnimations);
+    UnloadCharacterAnimations(bossAnimations);
     if (sketchfabHeroReady) UnloadModel(sketchfabHeroModel);
     if (sketchfabMonsterReady) UnloadModel(sketchfabMonsterModel);
     if (sketchfabBossReady) UnloadModel(sketchfabBossModel);
@@ -528,6 +675,9 @@ void UnloadOptionalNatureModels() {
     sketchfabHeroReady = false;
     sketchfabMonsterReady = false;
     sketchfabBossReady = false;
+    heroGroundOffset = 0.0f;
+    monsterGroundOffset = 0.0f;
+    bossGroundOffset = 0.0f;
 }
 
 void InitCamera() {
@@ -632,12 +782,20 @@ void DrawPlayerModel() {
     DrawCircle3D(V3(p.x, 0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                  WithAlpha(Color{ 14, 22, 25, 255 }, 105));
     if (sketchfabHeroReady) {
+        const int heroAnimation = ChooseCharacterAnimation(
+            heroAnimations, player.moving, player.running,
+            player.attackClock > 0.0f, player.hurtFlash > 0.0f);
+        ApplyCharacterAnimation(sketchfabHeroModel, heroAnimations, heroAnimation, GetFrameTime());
+        // Applying the GLB's idle pose also keeps skinned characters upright/visible.
         // Sketchfab models conventionally face -Z; bundled Gobkit CC0 models face +Z.
         const float yaw = heroModelFacesPositiveZ
             ? std::atan2(player.facing.x, player.facing.z) * RAD2DEG
             : std::atan2(-player.facing.x, -player.facing.z) * RAD2DEG;
-        DrawModelEx(sketchfabHeroModel, V3(p.x, p.y, p.z), V3(0.0f, 1.0f, 0.0f), yaw,
-                    V3(1.35f, 1.35f, 1.35f), WHITE);
+        const float modelScale = 1.35f;
+        DrawModelEx(sketchfabHeroModel,
+                    V3(p.x, p.y + heroGroundOffset*modelScale, p.z),
+                    V3(0.0f, 1.0f, 0.0f), yaw,
+                    V3(modelScale, modelScale, modelScale), WHITE);
     } else {
         const float step = std::sin(player.walkClock*10.5f) * 0.23f;
         const float bodyBob = player.grounded ? std::fabs(std::sin(player.walkClock*10.5f))*0.05f : 0.0f;
@@ -690,7 +848,9 @@ void DrawMonsterModel(Vector3 p, int kind, float phase, float scale, Color color
             ? std::atan2(dx, dz) * RAD2DEG
             : std::atan2(-dx, -dz) * RAD2DEG;
         const float modelScale = scale*1.35f;
-        DrawModelEx(sketchfabMonsterModel, p, V3(0.0f, 1.0f, 0.0f), yaw,
+        DrawModelEx(sketchfabMonsterModel,
+                    V3(p.x, p.y + monsterGroundOffset*modelScale, p.z),
+                    V3(0.0f, 1.0f, 0.0f), yaw,
                     V3(modelScale, modelScale, modelScale), WHITE);
         return;
     }
@@ -725,7 +885,9 @@ void DrawBossModel(int i) {
             ? std::atan2(dx, dz) * RAD2DEG
             : std::atan2(-dx, -dz) * RAD2DEG;
         const float modelScale = 1.45f*scale*pulse;
-        DrawModelEx(sketchfabBossModel, b.position, V3(0.0f, 1.0f, 0.0f), yaw,
+        DrawModelEx(sketchfabBossModel,
+                    V3(b.position.x, b.position.y + bossGroundOffset*modelScale, b.position.z),
+                    V3(0.0f, 1.0f, 0.0f), yaw,
                     V3(modelScale, modelScale, modelScale), WHITE);
     } else {
         DrawMonsterModel(b.position, i, b.phase, scale*pulse, c);
@@ -745,6 +907,25 @@ void DrawHealthBar3D(Vector3 pos, float health, float maxHealth, float width, Co
                  width*ratio, 0.075f, 0.07f, color);
 }
 void DrawWorldEntities() {
+    // Advance shared model animation once per frame, then draw all instances
+    // using the same skinned pose rather than restarting each clip per enemy.
+    const float animationDt = GetFrameTime();
+    const bool worldActive = screen == Screen::Playing;
+    if (sketchfabMonsterReady) {
+        const int animation = ChooseCharacterAnimation(monsterAnimations, worldActive, false);
+        ApplyCharacterAnimation(sketchfabMonsterModel, monsterAnimations, animation, animationDt, false);
+    }
+    if (sketchfabBossReady) {
+        bool anyBossAdvancing = false;
+        for (int i = 0; i < BOSS_COUNT; ++i) {
+            if (bosses[i].alive && BossUnlocked(i) && DistXZ(player.position, bosses[i].position) > 3.4f) {
+                anyBossAdvancing = true;
+                break;
+            }
+        }
+        const int animation = ChooseCharacterAnimation(bossAnimations, worldActive && anyBossAdvancing, false);
+        ApplyCharacterAnimation(sketchfabBossModel, bossAnimations, animation, animationDt, false);
+    }
     for (const Monster& m : monsters) {
         if (!m.alive || DistXZ(player.position, m.position)>75.0f) continue;
         DrawCircle3D(V3(m.position.x, 0.016f, m.position.z), 0.48f, V3(1.0f, 0.0f, 0.0f), 90.0f,
@@ -908,11 +1089,18 @@ void UpdatePlayer(float dt) {
     move.z = -inputX*sinYaw + inputZ*cosYaw;
     const float len = std::sqrt(move.x*move.x+move.z*move.z);
     if (len > 1.0f) { move.x/=len; move.z/=len; }
-    if (len > 0.1f) {
+    player.moving = len > 0.1f;
+#if !defined(__ANDROID__) && !defined(PLATFORM_ANDROID)
+    const bool sprintKeyDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+#else
+    const bool sprintKeyDown = false;
+#endif
+    player.running = player.moving && (sprintKeyDown || player.abilityClock > 0.0f);
+    if (player.moving) {
         player.facing = NormalizeXZ(move);
         player.walkClock += dt;
     }
-    const float speed = player.abilityClock > 0.0f ? 12.0f : 7.0f;
+    const float speed = player.abilityClock > 0.0f ? 12.0f : (player.running ? 10.0f : 7.0f);
     player.position.x += move.x*speed*dt;
     player.position.z += move.z*speed*dt;
     player.position.x = ClampF(player.position.x, WORLD_MIN_X, WORLD_MAX_X);
@@ -1233,6 +1421,11 @@ int main() {
                 ResetGame();
                 screen=Screen::Menu;
             }
+        }
+
+        if (screen != Screen::Playing) {
+            player.moving = false;
+            player.running = false;
         }
 
         const Biome biome=GetBiome(player.position.x);
