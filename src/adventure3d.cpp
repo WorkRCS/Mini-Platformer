@@ -126,7 +126,7 @@ Sound sfxMenu = {};
 Sound sfxMusic = {};
 struct CharacterAnimationSet {
     ModelAnimation* clips = nullptr;
-    unsigned int count = 0;
+    int count = 0;
     int idle = -1;
     int walk = -1;
     int run = -1;
@@ -501,10 +501,10 @@ std::string Lowercase(std::string value) {
 int FindCharacterAnimation(const CharacterAnimationSet& set, const char* keyword) {
     if (set.clips == nullptr || set.count == 0 || keyword == nullptr) return -1;
     const std::string target = Lowercase(keyword);
-    for (unsigned int i = 0; i < set.count; ++i) {
+    for (int i = 0; i < set.count; ++i) {
         if (Lowercase(set.clips[i].name) == target) return static_cast<int>(i);
     }
-    for (unsigned int i = 0; i < set.count; ++i) {
+    for (int i = 0; i < set.count; ++i) {
         if (Lowercase(set.clips[i].name).find(target) != std::string::npos)
             return static_cast<int>(i);
     }
@@ -543,10 +543,10 @@ void LoadCharacterAnimations(const std::string& modelPath, CharacterAnimationSet
     if (set.walk < 0) set.walk = set.run >= 0 ? set.run : set.idle;
     if (set.run < 0) set.run = set.walk;
 
-    TraceLog(LOG_INFO, "%s clips: %u (idle=%d, walk=%d, run=%d, attack=%d, hit=%d)",
+    TraceLog(LOG_INFO, "%s clips: %d (idle=%d, walk=%d, run=%d, attack=%d, hit=%d)",
              slot, set.count, set.idle, set.walk, set.run, set.attack, set.hit);
-    for (unsigned int i = 0; i < set.count; ++i)
-        TraceLog(LOG_DEBUG, "%s clip %u: '%s' (%d frames)", slot, i, set.clips[i].name, set.clips[i].frameCount);
+    for (int i = 0; i < set.count; ++i)
+        TraceLog(LOG_DEBUG, "%s clip %d: '%s' (%d keyframes)", slot, i, set.clips[i].name, set.clips[i].keyframeCount);
 }
 
 int ChooseCharacterAnimation(const CharacterAnimationSet& set, bool moving, bool running,
@@ -567,7 +567,7 @@ void ApplyCharacterAnimation(Model model, CharacterAnimationSet& set, int reques
     if (selected < 0 || static_cast<unsigned int>(selected) >= set.count)
         selected = set.idle >= 0 ? set.idle : 0;
     const ModelAnimation& clip = set.clips[selected];
-    if (model.boneCount <= 0 || clip.boneCount <= 0 || model.boneCount != clip.boneCount || clip.frameCount <= 0)
+    if (model.skeleton.boneCount == 0 || clip.boneCount == 0 || model.skeleton.boneCount != clip.boneCount || clip.keyframeCount <= 0)
         return;
     if (set.frameClocks.size() != set.count) set.frameClocks.assign(set.count, 0.0f);
     const bool oneShot = selected == set.attack || selected == set.hit || selected == set.death;
@@ -577,7 +577,7 @@ void ApplyCharacterAnimation(Model model, CharacterAnimationSet& set, int reques
     float& clock = set.frameClocks[static_cast<size_t>(selected)];
     clock += std::max(0.0f, dt) * 30.0f;
     const int elapsed = static_cast<int>(clock);
-    const int frame = oneShot ? std::min(elapsed, clip.frameCount - 1) : elapsed % clip.frameCount;
+    const int frame = oneShot ? std::min(elapsed, clip.keyframeCount - 1) : elapsed % clip.keyframeCount;
     UpdateModelAnimation(model, clip, frame);
 }
 
@@ -918,7 +918,8 @@ void DrawWorldEntities() {
     if (sketchfabBossReady) {
         bool anyBossAdvancing = false;
         for (int i = 0; i < BOSS_COUNT; ++i) {
-            if (bosses[i].alive && BossUnlocked(i) && DistXZ(player.position, bosses[i].position) > 3.4f) {
+            const bool unlocked = (i == 0) ? (player.kills >= 3) : !bosses[i - 1].alive;
+            if (bosses[i].alive && unlocked && DistXZ(player.position, bosses[i].position) > 3.4f) {
                 anyBossAdvancing = true;
                 break;
             }
