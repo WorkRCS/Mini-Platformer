@@ -27,7 +27,7 @@ Open **MSYS2 UCRT64** (not PowerShell) and install the dependencies:
 pacman -S --needed git mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
 \`\`\`
 
-Download the [Tiny Trails asset pack](https://github.com/WorkRCS/Mini-Platformer/files/asset-pack) (or use the asset ZIP supplied in the ChatGPT conversation), then extract it into the repository root. The paths should be `assets/background.gif` and `assets/character_atlas.png`. The animated background and character animation won't load until these files are present.
+Download the `TinyTrails_Assets.zip` asset pack supplied with the project instructions, then extract it into the repository root. The paths should be `assets/background.gif` and `assets/character_atlas.png`. The animated background and character animation won't load until these files are present.
 
 Clone the project and build it:
 
