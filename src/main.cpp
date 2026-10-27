@@ -858,9 +858,10 @@ void DrawGame() {
     for (const auto& c : coins) DrawCoin(c);
     for (const auto& e : enemies) DrawEnemy(e);
     DrawGoal();
-    DrawImpactEffect();
     DrawPlayer();
     DrawParticles();
+    // The shock ring is intentionally on top of the player so impacts are readable.
+    DrawImpactEffect();
     DrawScoreNotice();
     DrawHud();
     DrawTouchControls();
