@@ -873,9 +873,13 @@ void DrawBackground(float camX) {
                                  drawW, drawH };
         DrawTexturePro(backgroundTexture, source, dest, { 0.0f, 0.0f },
                        0.0f, WHITE);
-        // Subtle contrast layer keeps the pixel-art scenery bright while separating gameplay.
-        DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
-                               Color{ 12, 32, 58, 18 }, Color{ 9, 22, 37, 68 });
+        // One shared animated GIF, with a subtle biome tint so each level feels different.
+        static const Color tint[LEVEL_COUNT]={
+            {14,64,74,24},{5,105,135,28},{117,75,38,26},{32,104,55,24},{70,72,155,33},
+            {186,104,36,25},{63,141,205,32},{200,48,27,31},{105,66,163,35},{196,130,44,33}
+        };
+        DrawRectangle(0,0,VIEW_W,VIEW_H,tint[levelIndex]);
+        DrawRectangleGradientV(0,0,VIEW_W,VIEW_H,Color{12,32,58,18},Color{9,22,37,55});
         return;
     }
 
@@ -915,27 +919,36 @@ void DrawBackground(float camX) {
 }
 
 void DrawPlatform(const Platform& p) {
-    const Rectangle r = { p.box.x - cameraX, p.box.y, p.box.width, p.box.height };
-    if (r.x > VIEW_W || r.x + r.width < 0) return;
+    const Rectangle r={p.box.x-cameraX,p.box.y,p.box.width,p.box.height};
+    if(r.x>VIEW_W||r.x+r.width<0)return;
 
-    // Dark outline + warm earth make the walkable surface obvious at a glance.
-    DrawRectangleRounded({ r.x, r.y + 6, r.width, r.height }, 0.08f, 5,
-                         Color{ 8, 16, 30, 155 });
-    DrawRectangleRec(r, Color{ 104, 70, 57, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 9),
-                  static_cast<int>(r.width), static_cast<int>(std::max(0.0f, r.height - 9)),
-                  Color{ 75, 49, 48, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y),
-                  static_cast<int>(r.width), 10, Color{ 83, 225, 143, 255 });
-    DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + 10),
-                  static_cast<int>(r.width), 4, Color{ 42, 151, 103, 255 });
-    for (float x = r.x + 13; x < r.x + r.width - 8; x += 37) {
-        DrawRectangle(static_cast<int>(x), static_cast<int>(r.y + 24),
-                      17, 4, Color{ 143, 92, 71, 255 });
+    static const Color tops[LEVEL_COUNT]={
+        {83,225,143,255},{83,213,223,255},{221,191,116,255},{105,209,127,255},
+        {139,197,255,255},{234,177,106,255},{185,230,255,255},{255,113,77,255},
+        {185,151,255,255},{255,217,105,255}
+    };
+    static const Color soils[LEVEL_COUNT]={
+        {75,49,48,255},{41,76,91,255},{91,73,57,255},{37,73,56,255},{48,59,103,255},
+        {100,62,38,255},{55,82,111,255},{81,39,40,255},{47,44,81,255},{76,55,42,255}
+    };
+    const Color top=p.moving?Color{255,220,118,255}:tops[levelIndex];
+    const Color soil=p.moving?Color{56,68,91,255}:soils[levelIndex];
+    DrawRectangleRounded({r.x,r.y+6,r.width,r.height},.08f,5,Color{8,16,30,170});
+    DrawRectangleRec(r,soil);
+    DrawRectangle((int)r.x,(int)(r.y+9),(int)r.width,(int)std::max(0.0f,r.height-9),Color{35,42,57,255});
+    DrawRectangle((int)r.x,(int)r.y,(int)r.width,p.moving?8:10,top);
+    DrawRectangle((int)r.x,(int)(r.y+10),(int)r.width,4,
+                  Color{(unsigned char)(top.r*.55f),(unsigned char)(top.g*.55f),(unsigned char)(top.b*.55f),255});
+    for(float x=r.x+13;x<r.x+r.width-8;x+=37)
+        DrawRectangle((int)x,(int)(r.y+24),17,4,Color{143,92,71,220});
+    DrawRectangleLinesEx(r,1.5f,p.moving?Color{255,245,197,255}:Color{29,36,48,255});
+    if(p.moving) {
+        const float cy=r.y+17;
+        DrawLineEx({r.x+12,cy},{r.x+23,cy},2,Color{255,244,190,255});
+        DrawTriangle({r.x+23,cy},{r.x+18,cy-4},{r.x+18,cy+4},Color{255,244,190,255});
+        DrawLineEx({r.x+r.width-12,cy},{r.x+r.width-23,cy},2,Color{255,244,190,255});
     }
-    DrawRectangleLinesEx(r, 1.5f, Color{ 29, 36, 48, 255 });
 }
-
 void DrawCoin(const Coin& coin) {
     if (coin.taken) return;
     const float bob = std::sin(gameClock * 3.4f + coin.phase) * 4.0f;
@@ -948,32 +961,40 @@ void DrawCoin(const Coin& coin) {
 }
 
 void DrawSpike(const Spike& spike) {
-    const float x = spike.box.x - cameraX;
-    if (x > VIEW_W || x + spike.box.width < 0) return;
-    const int n = std::max(1, static_cast<int>(spike.box.width / 17.0f));
-    const float sw = spike.box.width / n;
+    const float x = spike.box.x - cameraX, y = spike.box.y, w = spike.box.width;
+    if (x > VIEW_W || x + w < 0) return;
 
-    // Bright danger strip matches the actual collision rectangle.
-    DrawRectangleRounded({ x - 2.0f, spike.box.y + spike.box.height - 5.0f,
-                           spike.box.width + 4.0f, 8.0f },
-                         0.25f, 5, Color{ 91, 25, 45, 255 });
-    for (int i = 0; i < n; ++i) {
-        const float x1 = x + i * sw;
-        DrawTriangle({ x1, spike.box.y + spike.box.height },
-                     { x1 + sw * 0.5f, spike.box.y - 2.0f },
-                     { x1 + sw, spike.box.y + spike.box.height },
-                     Color{ 111, 28, 54, 255 });
-        DrawTriangle({ x1 + 1.0f, spike.box.y + spike.box.height - 1.0f },
-                     { x1 + sw * 0.5f, spike.box.y + 2.0f },
-                     { x1 + sw - 1.0f, spike.box.y + spike.box.height - 1.0f },
-                     Color{ 255, 88, 105, 255 });
-        DrawTriangle({ x1 + sw * 0.20f, spike.box.y + spike.box.height - 3.0f },
-                     { x1 + sw * 0.47f, spike.box.y + 7.0f },
-                     { x1 + sw * 0.56f, spike.box.y + spike.box.height - 3.0f },
-                     Color{ 255, 190, 184, 255 });
+    // Each hazard has a unique visible silhouette, aligned to its collision box.
+    if (spike.type == 1) {
+        DrawEllipse((int)(x + w*0.5f), (int)(y+22), w*0.58f, 8, Color{18,49,48,255});
+        DrawCircleV({x+w*0.22f,y+15},13,Color{37,127,84,255});
+        DrawCircleV({x+w*0.48f,y+11},16,Color{66,178,98,255});
+        DrawCircleV({x+w*0.75f,y+15},13,Color{37,127,84,255});
+        DrawTriangle({x+w*.30f,y+9},{x+w*.39f,y+1},{x+w*.45f,y+11},Color{229,255,181,255});
+        DrawTriangle({x+w*.60f,y+10},{x+w*.71f,y+1},{x+w*.76f,y+12},Color{229,255,181,255});
+    } else if (spike.type == 2) {
+        DrawCircleV({x+w*.5f,y+17},23,Color{107,94,255,40});
+        DrawTriangle({x+2,y+26},{x+w*.30f,y+7},{x+w*.45f,y+26},Color{82,80,205,255});
+        DrawTriangle({x+w*.25f,y+26},{x+w*.52f,y-1},{x+w*.74f,y+26},Color{116,194,255,255});
+        DrawTriangle({x+w*.55f,y+26},{x+w*.82f,y+8},{x+w-2,y+26},Color{84,110,225,255});
+        DrawLineEx({x+w*.52f,y+3},{x+w*.52f,y+22},2,Color{230,251,255,255});
+    } else if (spike.type == 3) {
+        DrawCircleV({x+w*.5f,y+19},23,Color{255,74,30,42});
+        DrawTriangle({x+2,y+26},{x+w*.24f,y+9},{x+w*.42f,y+26},Color{196,48,40,255});
+        DrawTriangle({x+w*.25f,y+26},{x+w*.53f,y+1+std::sin(gameClock*8)*2},{x+w*.70f,y+26},Color{255,109,48,255});
+        DrawTriangle({x+w*.39f,y+26},{x+w*.53f,y+10},{x+w*.63f,y+26},Color{255,219,119,255});
+        DrawRectangle((int)x,(int)(y+24),(int)w,4,Color{118,37,42,255});
+    } else {
+        const int n=std::max(1,(int)(w/17.0f)); const float sw=w/n;
+        DrawRectangleRounded({x-2,y+20,w+4,8},.25f,5,Color{91,25,45,255});
+        for(int i=0;i<n;++i) {
+            const float x1=x+i*sw;
+            DrawTriangle({x1,y+26},{x1+sw*.5f,y-2},{x1+sw,y+26},Color{111,28,54,255});
+            DrawTriangle({x1+1,y+25},{x1+sw*.5f,y+2},{x1+sw-1,y+25},Color{255,88,105,255});
+            DrawTriangle({x1+sw*.20f,y+23},{x1+sw*.47f,y+7},{x1+sw*.56f,y+23},Color{255,190,184,255});
+        }
     }
 }
-
 void DrawEnemy(const Enemy& e) {
     if (!e.alive) return;
     const float x = e.box.x - cameraX;
