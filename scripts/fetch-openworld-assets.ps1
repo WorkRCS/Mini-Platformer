@@ -71,16 +71,25 @@ function Install-Model([string]$packRoot, [string]$namePattern, [string]$targetN
     Write-Host "Installed $relativeModelPath"
 }
 
-function Install-Sound([string]$packRoot, [string]$pattern, [string]$targetName) {
-    $candidate = Get-ChildItem -Path $packRoot -Recurse -File -Filter '*.wav' |
-        Where-Object { $_.BaseName -match $pattern } |
-        Sort-Object FullName | Select-Object -First 1
-    if (-not $candidate) {
-        Write-Warning "No WAV matching '$pattern' found for $targetName. The game will use its synthesized fallback sound."
+function Install-Sound([string]$packRoot, [string]$pattern, [string]$targetName, [int]$fallbackIndex = 0) {
+    # raylib supports common formats including WAV/OGG/MP3/FLAC; Kenney audio packs
+    # may not distribute every effect as WAV, so preserve the original extension.
+    $allAudio = @(Get-ChildItem -Path $packRoot -Recurse -File |
+        Where-Object { $_.Extension.ToLowerInvariant() -in @('.wav', '.ogg', '.mp3', '.flac') } |
+        Sort-Object FullName)
+    if ($allAudio.Count -eq 0) {
+        Write-Warning "No supported audio files found in $packRoot for $targetName. Using synthesized fallback."
         return
     }
-    Copy-Item -LiteralPath $candidate.FullName -Destination (Join-Path $sfxDir $targetName) -Force
-    Write-Host "Installed sound: $targetName"
+    $candidate = $allAudio | Where-Object { $_.BaseName -match $pattern } | Select-Object -First 1
+    if (-not $candidate) {
+        $candidate = $allAudio[$fallbackIndex % $allAudio.Count]
+        Write-Warning "No filename matched '$pattern'; using available pack audio '$($candidate.Name)' for $targetName."
+    }
+    $targetStem = [System.IO.Path]::GetFileNameWithoutExtension($targetName)
+    $destination = Join-Path $sfxDir ($targetStem + $candidate.Extension.ToLowerInvariant())
+    Copy-Item -LiteralPath $candidate.FullName -Destination $destination -Force
+    Write-Host "Installed sound: $(Split-Path -Leaf $destination)"
 }
 
 $natureRoot = Download-KenneyPack 'nature-kit'
@@ -92,8 +101,8 @@ if (-not $SkipAudio) {
     $impactRoot = Download-KenneyPack 'impact-sounds'
     $uiRoot = Download-KenneyPack 'interface-sounds'
     Install-Sound $rpgAudioRoot '(?i)(sword|weapon|impact|hit)' 'attack.wav'
-    Install-Sound $impactRoot '(?i)(monster|flesh|hurt|damage|impact)' 'enemy_down.wav'
-    Install-Sound $impactRoot '(?i)(flesh|hurt|damage|body)' 'player_hurt.wav'
+    Install-Sound $impactRoot '(?i)(monster|flesh|hurt|damage|impact)' 'enemy_down.wav' 0
+    Install-Sound $impactRoot '(?i)(flesh|hurt|damage|body)' 'player_hurt.wav' 1
     Install-Sound $rpgAudioRoot '(?i)(magic|spell|power|whoosh|swoosh)' 'ability.wav'
     Install-Sound $uiRoot '(?i)(click|confirm|select|button)' 'ui_click.wav'
 }
@@ -111,5 +120,5 @@ redistributing a release, and do not bundle the full extracted source packs.
 "@ | Set-Content -LiteralPath (Join-Path $assetsRoot '3D_ASSET_SOURCES.txt') -Encoding utf8
 
 Write-Host ''
-Write-Host 'Wildbound asset setup finished. Rebuild the Android APK to bundle assets.'
+Write-Host 'Wildbound asset setup finished. Rebuild the desktop game or Android APK to bundle assets.'
 Write-Host "Downloaded archives are cached under: $tempRoot"
