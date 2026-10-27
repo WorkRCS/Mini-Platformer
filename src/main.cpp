@@ -128,7 +128,7 @@ bool Button(Rectangle r, const char* label, bool active = true) {
     const Color fill = !active ? Color{ 39, 46, 64, 255 }
                               : (hover ? PANEL_LIT : PANEL);
     DrawRectangleRounded(r, 0.22f, 8, fill);
-    DrawRectangleRoundedLines(r, 0.22f, 8, 2.0f,
+    DrawRectangleRoundedLinesEx(r, 0.22f, 8, 2.0f,
                               active && hover ? MINT : Color{ 76, 96, 133, 255 });
     const int fs = 19;
     const int tw = MeasureText(label, fs);
@@ -610,7 +610,7 @@ void DrawTitle() {
     TextCentered("A little platform adventure", 137, 18, MINT);
     DrawRectangleRounded({ 332, 183, 296, 333 }, 0.08f, 12,
                          Color{ 10, 22, 40, 205 });
-    DrawRectangleRoundedLines({ 332, 183, 296, 333 }, 0.08f, 12,
+    DrawRectangleRoundedLinesEx({ 332, 183, 296, 333 }, 0.08f, 12,
                               1.5f, Color{ 96, 135, 166, 160 });
 
     if (Button({ 370, 217, 220, 48 }, "PLAY")) StartGame();
@@ -646,7 +646,7 @@ void DrawOverlay(const char* title, const char* subtitle) {
     DrawGame();
     DrawRectangle(0, 0, VIEW_W, VIEW_H, Color{ 5, 12, 25, 175 });
     DrawRectangleRounded({ 268, 144, 424, 252 }, 0.07f, 10, Color{ 18, 31, 54, 248 });
-    DrawRectangleRoundedLines({ 268, 144, 424, 252 }, 0.07f, 10, 2,
+    DrawRectangleRoundedLinesEx({ 268, 144, 424, 252 }, 0.07f, 10, 2,
                               Color{ 83, 130, 163, 220 });
     TextCentered(title, 177, 32, WHITE_90);
     TextCentered(subtitle, 220, 15, Color{ 177, 201, 223, 255 });
