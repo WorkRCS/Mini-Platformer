@@ -21,7 +21,7 @@ jobs:
       - name: Install Android SDK components
         shell: bash
         run: |
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_ROOT="$ANDROID_HOME"
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | sort | tail -n 1)"
           if [ -z "$SDKMANAGER" ]; then
             echo "sdkmanager not found under $SDK_ROOT/cmdline-tools"
@@ -55,12 +55,7 @@ jobs:
           LLVM_NM="$ANDROID_HOME/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
           unzip -p "$APK" lib/arm64-v8a/libmain.so > "$LIB"
           "$LLVM_NM" -D --defined-only "$LIB" | tee "$RUNNER_TEMP/libmain-symbols.txt"
-          grep -Eq '[[:space:]]ANativeActivity_onCreate
-        with:
-          name: TinyTrails-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
- "$RUNNER_TEMP/libmain-symbols.txt"
+          grep -Fq "ANativeActivity_onCreate" "$RUNNER_TEMP/libmain-symbols.txt"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
