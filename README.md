@@ -1,6 +1,6 @@
 # Tiny Trails — Mini Platformer
 
-A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the animated waterfall background and transparent character sprite atlas in `assets/`.
+A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the animated waterfall background and one complete transparent character PNG in `assets/`.
 
 ## Features
 
@@ -86,4 +86,4 @@ Mini-Platformer/
     └── app/src/main/AndroidManifest.xml
 ```
 
-The character uses one complete transparent PNG image. The game crops transparent margins at load time, preserves the image aspect ratio on every display, and uses whole-image bob/tilt/squash effects for idle, movement, jump, landing, and damage. Because this is a single pose image, it does not contain separate hand-drawn run/jump frames. The animated background uses the supplied 8-frame GIF. The same `assets/` folder is copied beside the desktop build and packaged into Android. Sound effects are synthesized at runtime, so no audio files are required.
+The character uses one complete transparent PNG image. The game crops transparent margins at load time, preserves the image aspect ratio on every display, and uses whole-image bob/tilt/squash effects for idle, movement, jump, landing, and damage. Because this is a single pose image, it does not contain separate hand-drawn run/jump frames. The animated background uses the supplied 8-frame GIF. The same `assets/` folder is copied beside the desktop build and packaged into Android. The desktop executable embeds `assets/app_icon.ico`; the runtime window uses `assets/app_icon.png`, while Android uses `android/app/src/main/res/drawable/ic_launcher.xml`. Sound effects are synthesized at runtime, so no audio files are required.
