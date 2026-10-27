@@ -123,8 +123,14 @@ Sound sfxMenu = {};
 Sound sfxMusic = {};
 Model natureTree = {};
 Model natureRock = {};
+Model sketchfabHeroModel = {};
+Model sketchfabMonsterModel = {};
+Model sketchfabBossModel = {};
 bool treeModelReady = false;
 bool rockModelReady = false;
+bool sketchfabHeroReady = false;
+bool sketchfabMonsterReady = false;
+bool sketchfabBossReady = false;
 
 Vector2 newTouchPresses[10] = {};
 int newTouchPressCount = 0;
@@ -380,24 +386,48 @@ Model LoadModelFromManifest(const char* manifestPath) {
     if (path.empty() || !FileExists(path.c_str())) return Model{};
     return LoadModel(path.c_str());
 }
+Model LoadOptionalModelStem(const char* stem) {
+    const char* extensions[] = { ".glb", ".gltf" };
+    for (const char* ext : extensions) {
+        const std::string path = std::string(stem) + ext;
+        if (!FileExists(path.c_str())) continue;
+        Model model = LoadModel(path.c_str());
+        if (model.meshCount > 0) return model;
+    }
+    return Model{};
+}
+
 void LoadOptionalNatureModels() {
-    // Models from the CC0 Kenney Nature Kit are optional; procedural scenery is the fallback.
-    if (FileExists("assets/3d/world_tree.glb")) natureTree = LoadModel("assets/3d/world_tree.glb");
-    else if (FileExists("assets/3d/world_tree.gltf")) natureTree = LoadModel("assets/3d/world_tree.gltf");
-    else natureTree = LoadModelFromManifest("assets/3d/world_tree_path.txt");
+    // User-installed Sketchfab GLBs take priority; existing Kenney models are fallbacks.
+    natureTree = LoadOptionalModelStem("assets/3d/sketchfab_tree");
+    if (natureTree.meshCount == 0) natureTree = LoadOptionalModelStem("assets/3d/world_tree");
+    if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("assets/3d/world_tree_path.txt");
     treeModelReady = natureTree.meshCount > 0;
 
-    if (FileExists("assets/3d/world_rock.glb")) natureRock = LoadModel("assets/3d/world_rock.glb");
-    else if (FileExists("assets/3d/world_rock.gltf")) natureRock = LoadModel("assets/3d/world_rock.gltf");
-    else natureRock = LoadModelFromManifest("assets/3d/world_rock_path.txt");
+    natureRock = LoadOptionalModelStem("assets/3d/sketchfab_rock");
+    if (natureRock.meshCount == 0) natureRock = LoadOptionalModelStem("assets/3d/world_rock");
+    if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("assets/3d/world_rock_path.txt");
     rockModelReady = natureRock.meshCount > 0;
+
+    sketchfabHeroModel = LoadOptionalModelStem("assets/3d/sketchfab_hero");
+    sketchfabHeroReady = sketchfabHeroModel.meshCount > 0;
+    sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/sketchfab_monster");
+    sketchfabMonsterReady = sketchfabMonsterModel.meshCount > 0;
+    sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss");
+    sketchfabBossReady = sketchfabBossModel.meshCount > 0;
 }
 
 void UnloadOptionalNatureModels() {
     if (treeModelReady) UnloadModel(natureTree);
     if (rockModelReady) UnloadModel(natureRock);
+    if (sketchfabHeroReady) UnloadModel(sketchfabHeroModel);
+    if (sketchfabMonsterReady) UnloadModel(sketchfabMonsterModel);
+    if (sketchfabBossReady) UnloadModel(sketchfabBossModel);
     treeModelReady = false;
     rockModelReady = false;
+    sketchfabHeroReady = false;
+    sketchfabMonsterReady = false;
+    sketchfabBossReady = false;
 }
 
 void InitCamera() {
@@ -501,28 +531,34 @@ void DrawPlayerModel() {
     const Vector3 p = player.position;
     DrawCircle3D(V3(p.x, 0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                  WithAlpha(Color{ 14, 22, 25, 255 }, 105));
-    const float step = std::sin(player.walkClock*10.5f) * 0.23f;
-    const float bodyBob = player.grounded ? std::fabs(std::sin(player.walkClock*10.5f))*0.05f : 0.0f;
-    Color armor = player.hurtFlash > 0.0f ? WHITE : Color{ 65, 109, 164, 255 };
-    Color cloth = Color{ 32, 54, 89, 255 };
-    // Tiny procedural hero model is the fallback while the real rigged model is being integrated.
-    DrawCube(V3(p.x, p.y+1.10f+bodyBob, p.z), 0.56f, 0.78f, 0.36f, armor);
-    DrawCube(V3(p.x, p.y+0.64f+bodyBob, p.z-0.02f), 0.62f, 0.32f, 0.41f, cloth);
-    // Cape, shoulder plates, chest crest and visor give the placeholder hero a clearer silhouette.
-    DrawCube(V3(p.x, p.y+1.08f+bodyBob, p.z+0.235f), 0.38f, 0.60f, 0.09f, Color{ 112, 47, 59, 255 });
-    DrawSphere(V3(p.x-0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
-    DrawSphere(V3(p.x+0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
-    DrawSphere(V3(p.x, p.y+1.14f+bodyBob, p.z-0.205f), 0.09f, C_GOLD);
-    DrawSphere(V3(p.x, p.y+1.75f+bodyBob, p.z), 0.25f, Color{ 226, 188, 151, 255 });
-    DrawCylinder(V3(p.x, p.y+2.00f+bodyBob, p.z), 0.15f, 0.22f, 0.12f, 7, C_GOLD);
-    DrawCube(V3(p.x, p.y+1.78f+bodyBob, p.z-0.215f), 0.26f, 0.075f, 0.045f, C_CYAN);
-    const Vector3 leftHip = V3(p.x-0.18f, p.y+0.58f, p.z);
-    const Vector3 rightHip = V3(p.x+0.18f, p.y+0.58f, p.z);
-    DrawCylinderEx(leftHip, V3(p.x-0.18f+step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
-    DrawCylinderEx(rightHip, V3(p.x+0.18f-step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
-    DrawCylinderEx(V3(p.x-0.32f, p.y+1.36f, p.z), V3(p.x-0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
-    DrawCylinderEx(V3(p.x+0.32f, p.y+1.36f, p.z), V3(p.x+0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
     Vector3 hand = V3(p.x+0.42f, p.y+0.94f, p.z-0.06f);
+    if (sketchfabHeroReady) {
+        // Sketchfab downloads are expected to be GLB, around human height, with the front toward -Z.
+        const float yaw = std::atan2(-player.facing.x, -player.facing.z) * RAD2DEG;
+        DrawModelEx(sketchfabHeroModel, V3(p.x, p.y, p.z), V3(0.0f, 1.0f, 0.0f), yaw,
+                    V3(1.35f, 1.35f, 1.35f), WHITE);
+    } else {
+        const float step = std::sin(player.walkClock*10.5f) * 0.23f;
+        const float bodyBob = player.grounded ? std::fabs(std::sin(player.walkClock*10.5f))*0.05f : 0.0f;
+        Color armor = player.hurtFlash > 0.0f ? WHITE : Color{ 65, 109, 164, 255 };
+        Color cloth = Color{ 32, 54, 89, 255 };
+        // Procedural fallback until the Sketchfab hero GLB has been installed.
+        DrawCube(V3(p.x, p.y+1.10f+bodyBob, p.z), 0.56f, 0.78f, 0.36f, armor);
+        DrawCube(V3(p.x, p.y+0.64f+bodyBob, p.z-0.02f), 0.62f, 0.32f, 0.41f, cloth);
+        DrawCube(V3(p.x, p.y+1.08f+bodyBob, p.z+0.235f), 0.38f, 0.60f, 0.09f, Color{ 112, 47, 59, 255 });
+        DrawSphere(V3(p.x-0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
+        DrawSphere(V3(p.x+0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
+        DrawSphere(V3(p.x, p.y+1.14f+bodyBob, p.z-0.205f), 0.09f, C_GOLD);
+        DrawSphere(V3(p.x, p.y+1.75f+bodyBob, p.z), 0.25f, Color{ 226, 188, 151, 255 });
+        DrawCylinder(V3(p.x, p.y+2.00f+bodyBob, p.z), 0.15f, 0.22f, 0.12f, 7, C_GOLD);
+        DrawCube(V3(p.x, p.y+1.78f+bodyBob, p.z-0.215f), 0.26f, 0.075f, 0.045f, C_CYAN);
+        const Vector3 leftHip = V3(p.x-0.18f, p.y+0.58f, p.z);
+        const Vector3 rightHip = V3(p.x+0.18f, p.y+0.58f, p.z);
+        DrawCylinderEx(leftHip, V3(p.x-0.18f+step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
+        DrawCylinderEx(rightHip, V3(p.x+0.18f-step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
+        DrawCylinderEx(V3(p.x-0.32f, p.y+1.36f, p.z), V3(p.x-0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
+        DrawCylinderEx(V3(p.x+0.32f, p.y+1.36f, p.z), V3(p.x+0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
+    }
     Vector3 swordTip = V3(hand.x+player.facing.x*0.95f, hand.y+0.28f, hand.z+player.facing.z*0.95f);
     if (player.attackClock > 0.0f) {
         const float swing = (0.5f-player.attackClock)*3.2f;
@@ -546,6 +582,13 @@ void DrawPlayerModel() {
 }
 
 void DrawMonsterModel(Vector3 p, int kind, float phase, float scale, Color color) {
+    if (sketchfabMonsterReady) {
+        const float yaw = std::atan2(-(player.position.x-p.x), -(player.position.z-p.z)) * RAD2DEG;
+        const float modelScale = scale*1.35f;
+        DrawModelEx(sketchfabMonsterModel, p, V3(0.0f, 1.0f, 0.0f), yaw,
+                    V3(modelScale, modelScale, modelScale), WHITE);
+        return;
+    }
     const float bob = std::sin(phase*4.2f)*0.08f;
     DrawSphere(V3(p.x, p.y+0.78f*scale+bob, p.z), 0.58f*scale, color);
     DrawSphere(V3(p.x, p.y+1.35f*scale+bob, p.z-0.13f*scale), 0.37f*scale, color);
@@ -570,7 +613,14 @@ void DrawBossModel(int i) {
     const float scale = 1.65f + i*0.22f;
     const Color c = BossColor(i);
     const float pulse = 1.0f + std::sin(worldClock*3.0f+i)*0.035f;
-    DrawMonsterModel(b.position, i, b.phase, scale*pulse, c);
+    if (sketchfabBossReady) {
+        const float yaw = std::atan2(-(player.position.x-b.position.x), -(player.position.z-b.position.z)) * RAD2DEG;
+        const float modelScale = 1.45f*scale*pulse;
+        DrawModelEx(sketchfabBossModel, b.position, V3(0.0f, 1.0f, 0.0f), yaw,
+                    V3(modelScale, modelScale, modelScale), WHITE);
+    } else {
+        DrawMonsterModel(b.position, i, b.phase, scale*pulse, c);
+    }
     DrawSphere(V3(b.position.x, b.position.y+1.65f*scale, b.position.z-0.32f*scale),
                0.28f*scale, WithAlpha(i==2 ? C_GOLD : C_CYAN, 225));
     if (DistXZ(player.position, b.position) < 26.0f) {
