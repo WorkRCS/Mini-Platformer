@@ -683,8 +683,8 @@ void LoadLevel(int which) {
             { { 2350, 450, 490, 100 } }
         };
         // Cactus PNGs sit directly on the top edge of each supporting ground platform.
-        spikes = { { { 248, 422, 32, 48 }, 4 }, { { 1080, 402, 32, 48 }, 4 },
-                   { { 1915, 392, 32, 48 }, 4 }, { { 2490, 402, 32, 48 }, 4 } };
+        spikes = { { { 246, 398, 48, 72 }, 4 }, { { 1072, 378, 48, 72 }, 4 },
+                   { { 1907, 368, 48, 72 }, 4 }, { { 2475, 378, 48, 72 }, 4 } };
         AddCoin(180, 423, 0.0f); AddCoin(360, 420, 1.0f);
         AddCoin(575, 385, 2.0f); AddCoin(635, 385, 3.0f);
         AddCoin(805, 340, 1.5f); AddCoin(865, 340, 2.5f);
@@ -792,9 +792,9 @@ void LoadLevel(int which) {
                 Spike sp;
                 sp.type = (levelIndex + i) % 6;
                 if (sp.type == 4) {
-                    sp.box = { x + width * 0.34f, y - 48.0f, 32.0f, 48.0f };
+                    sp.box = { x + width * 0.32f, y - 64.0f, 42.0f, 64.0f };
                 } else if (sp.type == 5) {
-                    sp.box = { x + width * 0.34f, y - 60.0f, 32.0f, 60.0f };
+                    sp.box = { x + width * 0.32f, y - 70.0f, 42.0f, 70.0f };
                 } else {
                     sp.box = { x + width * 0.25f, y - 26.0f,
                                std::min(58.0f, width * 0.42f), 26.0f };
@@ -887,7 +887,7 @@ void TakeHit() {
                              player.pos.y + PLAYER_H * 0.5f };
     impactScreenPos = { impact.x - cameraX, impact.y };
     SpawnParticles(impact, C_CORAL, 36);
-    PlayFx(sfxHurt);
+    if (!pendingGameOver) PlayFx(sfxHurt);
 
     // Visible knockback first; the player remains rendered and tinted instead of vanishing.
     player.vel.x = player.vel.x >= 0.0f ? -210.0f : 210.0f;
@@ -1439,7 +1439,7 @@ void DrawPowerUp(const PowerUp& item) {
     const float x = item.center.x - cameraX;
     const float y = item.center.y + std::sin(gameClock * 3.2f + item.phase) * 4.0f;
     if (x < -32 || x > VIEW_W + 32) return;
-    DrawCircleV({x,y},18,Color{item.type==0?255:110,item.type==item.type?82:255,220,32});
+    DrawCircleV({x,y},18,Color{static_cast<unsigned char>(item.type==0?255:110),static_cast<unsigned char>(item.type==0?82:190),static_cast<unsigned char>(item.type==0?220:110),32});
     DrawCircleLines((int)x,(int)y,15,item.type==0?Color{255,115,198,255}:Color{255,220,106,255});
     if (item.type == 0) {
         // Magnet icon is drawn in code so no button/power-up artwork is required.
@@ -1750,9 +1750,9 @@ void DrawGame() {
 void DrawMenuHero(float x, float feetY) {
     // Keep the menu hero grounded on the same platform asset used in gameplay.
     const float bob = 0.0f;
-    DrawCircle(static_cast<int>(x), static_cast<int>(y + 32.0f),
+    DrawCircle(static_cast<int>(x), static_cast<int>(feetY - 38.0f),
                48.0f, Color{ 91, 245, 190, 20 });
-    DrawCircleLines(static_cast<int>(x), static_cast<int>(y + 32.0f),
+    DrawCircleLines(static_cast<int>(x), static_cast<int>(feetY - 38.0f),
                     40.0f + std::sin(gameClock * 1.8f) * 1.5f,
                     Color{ 117, 255, 204, 85 });
 
