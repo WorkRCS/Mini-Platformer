@@ -745,8 +745,8 @@ void UpdatePlayer(float dt) {
     const float inputZ = move.z;
     const float sinYaw = std::sin(cameraYaw);
     const float cosYaw = std::cos(cameraYaw);
-    move.x = inputX*cosYaw - inputZ*sinYaw;
-    move.z = inputX*sinYaw + inputZ*cosYaw;
+    move.x = inputX*cosYaw + inputZ*sinYaw;
+    move.z = -inputX*sinYaw + inputZ*cosYaw;
     const float len = std::sqrt(move.x*move.x+move.z*move.z);
     if (len > 1.0f) { move.x/=len; move.z/=len; }
     if (len > 0.1f) {
