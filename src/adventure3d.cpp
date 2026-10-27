@@ -224,6 +224,14 @@ Sound MakeTone(float frequency, float duration, float volume, bool noisy = false
     UnloadWave(wave);
     return sound;
 }
+void LoadRealSound(Sound& target, const char* path) {
+    if (!FileExists(path)) return;
+    Sound replacement = LoadSound(path);
+    if (replacement.frameCount == 0) return;
+    if (target.frameCount > 0) UnloadSound(target);
+    target = replacement;
+}
+
 Sound MakeMusic() {
     const unsigned int sampleRate = 22050;
     const float duration = 8.0f;
@@ -351,23 +359,28 @@ void MakeWorld() {
     worldClock = 0.0f;
 }
 
+Model LoadModelFromManifest(const char* manifestPath) {
+    if (!FileExists(manifestPath)) return Model{};
+    char* raw = LoadFileText(manifestPath);
+    if (raw == nullptr) return Model{};
+    std::string path(raw);
+    UnloadFileText(raw);
+    while (!path.empty() && (path.back() == '\\n' || path.back() == '\\r' || path.back() == ' ' || path.back() == '\\t')) path.pop_back();
+    while (!path.empty() && (path.front() == ' ' || path.front() == '\\t')) path.erase(path.begin());
+    if (path.empty() || !FileExists(path.c_str())) return Model{};
+    return LoadModel(path.c_str());
+}
 void LoadOptionalNatureModels() {
-    // CC0 Kenney Nature Kit models are optional: the procedural scene remains playable
-    // if the developer has not run scripts/fetch-openworld-assets.ps1 yet.
-    if (FileExists("assets/3d/world_tree.glb")) {
-        natureTree = LoadModel("assets/3d/world_tree.glb");
-        treeModelReady = natureTree.meshCount > 0;
-    } else if (FileExists("assets/3d/world_tree.gltf")) {
-        natureTree = LoadModel("assets/3d/world_tree.gltf");
-        treeModelReady = natureTree.meshCount > 0;
-    }
-    if (FileExists("assets/3d/world_rock.glb")) {
-        natureRock = LoadModel("assets/3d/world_rock.glb");
-        rockModelReady = natureRock.meshCount > 0;
-    } else if (FileExists("assets/3d/world_rock.gltf")) {
-        natureRock = LoadModel("assets/3d/world_rock.gltf");
-        rockModelReady = natureRock.meshCount > 0;
-    }
+    // Models from the CC0 Kenney Nature Kit are optional; procedural scenery is the fallback.
+    if (FileExists("assets/3d/world_tree.glb")) natureTree = LoadModel("assets/3d/world_tree.glb");
+    else if (FileExists("assets/3d/world_tree.gltf")) natureTree = LoadModel("assets/3d/world_tree.gltf");
+    else natureTree = LoadModelFromManifest("assets/3d/world_tree_path.txt");
+    treeModelReady = natureTree.meshCount > 0;
+
+    if (FileExists("assets/3d/world_rock.glb")) natureRock = LoadModel("assets/3d/world_rock.glb");
+    else if (FileExists("assets/3d/world_rock.gltf")) natureRock = LoadModel("assets/3d/world_rock.gltf");
+    else natureRock = LoadModelFromManifest("assets/3d/world_rock_path.txt");
+    rockModelReady = natureRock.meshCount > 0;
 }
 
 void UnloadOptionalNatureModels() {
@@ -714,7 +727,8 @@ void UpdatePlayer(float dt) {
     player.position.x = ClampF(player.position.x, WORLD_MIN_X, WORLD_MAX_X);
     player.position.z = ClampF(player.position.z, -WORLD_HALF_Z+2.0f, WORLD_HALF_Z-2.0f);
 
-    if ((IsKeyPressed(KEY_SPACE) || Pressed(ButtonRect(sw-105*uiScale, sh-166*uiScale, 88*uiScale, 88*uiScale))) && player.grounded) {
+    const Rectangle jumpButton = ButtonRect(sw-106*uiScale, sh-205*uiScale, 54*uiScale, 42*uiScale);
+    if ((IsKeyPressed(KEY_SPACE) || Pressed(jumpButton)) && player.grounded) {
         player.velocity.y = 8.3f;
         player.grounded = false;
         SpawnBurst(V3(player.position.x, 0.15f, player.position.z), C_GOLD, 8, 1.8f);
