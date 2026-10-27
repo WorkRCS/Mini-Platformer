@@ -144,15 +144,16 @@ if (-not $SkipAudio) {
 }
 
 @"
-Assets used by Wildbound are fetched from official Kenney pages:
-- Nature Kit: https://kenney.nl/assets/nature-kit
-- RPG Audio: https://kenney.nl/assets/rpg-audio
-- Impact Sounds: https://kenney.nl/assets/impact-sounds
-- Interface Sounds: https://kenney.nl/assets/interface-sounds
+Assets used by Wildbound are fetched from their publishers:
+- Kenney Nature Kit: https://kenney.nl/assets/nature-kit (CC0)
+- Kenney RPG Audio: https://kenney.nl/assets/rpg-audio (CC0)
+- Kenney Impact Sounds: https://kenney.nl/assets/impact-sounds (CC0)
+- Kenney Interface Sounds: https://kenney.nl/assets/interface-sounds (CC0)
+- Gobkit KnightCaptain, OrcChainBrute, BloodironJuggernaut: https://gobkit.com/api/free (CC0 1.0)
 
-These packs are marked CC0 on their publisher pages. The game keeps procedural
-fallbacks if a model or sound is unavailable. Review each source page before
-redistributing a release, and do not bundle the full extracted source packs.
+The game keeps procedural fallbacks if an asset is unavailable. Review each
+source page before redistributing a release, and do not bundle the full
+extracted source packs.
 "@ | Set-Content -LiteralPath (Join-Path $assetsRoot '3D_ASSET_SOURCES.txt') -Encoding utf8
 
 Write-Host ''
