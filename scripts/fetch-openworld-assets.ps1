@@ -7,7 +7,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $assetsRoot = Join-Path $repoRoot 'assets'
 $threeD = Join-Path $assetsRoot '3d'
 $sfxDir = Join-Path $assetsRoot 'sfx'
-$tempRoot = Join-Path $env:TEMP 'wildbound-asset-setup'
+$tempBase = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { [System.IO.Path]::GetTempPath() }
+$tempRoot = Join-Path $tempBase 'wildbound-asset-setup'
 
 New-Item -ItemType Directory -Force -Path $threeD, $sfxDir, $tempRoot | Out-Null
 
