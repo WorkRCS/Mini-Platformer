@@ -66,7 +66,8 @@ Texture2D characterTexture {};
 Texture2D backgroundTexture {};
 Texture2D cactusTexture {};
 Texture2D pillarTexture {};
-Texture2D platformLargeTexture {};
+Texture2D platformGroundTexture {};
+Texture2D platformMediumTexture {};
 Texture2D platformSmallTexture {};
 Image backgroundFrames {};
 int backgroundFrameCount = 0;
@@ -475,7 +476,8 @@ void LoadGameAssets() {
     if (characterTexture.id != 0) SetTextureFilter(characterTexture, TEXTURE_FILTER_BILINEAR);
     cactusTexture = LoadOptionalTexture("cactus.png");
     pillarTexture = LoadOptionalTexture("pillar.png");
-    platformLargeTexture = LoadOptionalTexture("platform_large.png");
+    platformGroundTexture = LoadOptionalTexture("platform_ground.png");
+    platformMediumTexture = LoadOptionalTexture("platform_medium.png");
     platformSmallTexture = LoadOptionalTexture("platform_small.png");
 }
 
@@ -504,11 +506,12 @@ void UnloadGameAssets() {
     if(characterTexture.id!=0) UnloadTexture(characterTexture);
     if(cactusTexture.id!=0) UnloadTexture(cactusTexture);
     if(pillarTexture.id!=0) UnloadTexture(pillarTexture);
-    if(platformLargeTexture.id!=0) UnloadTexture(platformLargeTexture);
+    if(platformGroundTexture.id!=0) UnloadTexture(platformGroundTexture);
+    if(platformMediumTexture.id!=0) UnloadTexture(platformMediumTexture);
     if(platformSmallTexture.id!=0) UnloadTexture(platformSmallTexture);
     if(backgroundFrames.data!=nullptr) UnloadImage(backgroundFrames);
     backgroundTexture={}; characterTexture={}; cactusTexture={}; pillarTexture={};
-    platformLargeTexture={}; platformSmallTexture={}; backgroundFrames={};
+    platformGroundTexture={}; platformMediumTexture={}; platformSmallTexture={}; backgroundFrames={};
 }
 
 void AddCoin(float x, float y, float phase) {
@@ -1047,13 +1050,28 @@ void DrawPlatform(const Platform& p) {
         DrawRectangle((int)x,(int)(r.y+24),17,4,Color{143,92,71,220});
     DrawRectangleLinesEx(r,1.5f,p.moving?Color{255,245,197,255}:Color{29,36,48,255});
     if (!p.moving) {
-        const Texture2D art = (p.box.width >= 180.0f || p.box.height >= 70.0f)
-            ? platformLargeTexture : platformSmallTexture;
-        if (art.id != 0) {
-            const float artH = (p.box.width >= 180.0f || p.box.height >= 70.0f)
-                ? std::min(64.0f, r.height) : std::min(32.0f, r.height);
-            const Rectangle src = {0.0f, 0.0f, (float)art.width, (float)art.height};
-            DrawTexturePro(art, src, {r.x, r.y, r.width, artH}, {0.0f,0.0f}, 0.0f, WHITE);
+        // Three separate materials: deep ground, medium floating ledge, and small ledge.
+        const bool isGround = p.box.height >= 70.0f;
+        const bool isMedium = !isGround && p.box.width >= 145.0f;
+        const Texture2D art = isGround ? platformGroundTexture
+                              : (isMedium ? platformMediumTexture : platformSmallTexture);
+        if (art.id != 0 && art.width > 0 && art.height > 0) {
+            const float artH = isGround ? std::min(64.0f, r.height)
+                                        : std::min(28.0f, r.height);
+            const float naturalTileWidth = static_cast<float>(art.width) * artH /
+                                           static_cast<float>(art.height);
+            // Repeat the platform texture at its natural aspect ratio instead of
+            // stretching a small ledge image across a long ground platform.
+            float offset = 0.0f;
+            while (offset < r.width) {
+                const float tileW = std::min(naturalTileWidth, r.width - offset);
+                const float sourceW = static_cast<float>(art.width) *
+                                      (tileW / naturalTileWidth);
+                const Rectangle src = {0.0f, 0.0f, sourceW, static_cast<float>(art.height)};
+                const Rectangle dst = {r.x + offset, r.y, tileW, artH};
+                DrawTexturePro(art, src, dst, {0.0f,0.0f}, 0.0f, WHITE);
+                offset += tileW;
+            }
         }
     }
     if(p.moving) {
