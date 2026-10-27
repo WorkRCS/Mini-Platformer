@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,10 @@ Screen screen = Screen::Menu;
 RenderTexture2D canvas {};
 Texture2D characterTexture {};
 Texture2D backgroundTexture {};
+Texture2D cactusTexture {};
+Texture2D pillarTexture {};
+Texture2D platformLargeTexture {};
+Texture2D platformSmallTexture {};
 Image backgroundFrames {};
 int backgroundFrameCount = 0;
 int currentBackgroundFrame = 0;
@@ -75,6 +80,10 @@ bool touchDown = false;
 bool touchPressed = false;
 bool previousJumpTouch = false;
 int previousTouchCount = 0;
+int previousTouchIds[10] = {};
+int previousTouchIdCount = 0;
+Vector2 newTouchPressPositions[10] = {};
+int newTouchPressCount = 0;
 float viewScale = 1.0f;
 float viewOffsetX = 0.0f;
 float viewOffsetY = 0.0f;
@@ -144,16 +153,30 @@ Vector2 ToVirtual(Vector2 p) {
 void UpdatePointer() {
     const float sw = static_cast<float>(GetScreenWidth());
     const float sh = static_cast<float>(GetScreenHeight());
-    viewScale = std::min(sw / static_cast<float>(VIEW_W),
-                         sh / static_cast<float>(VIEW_H));
+    viewScale = std::max(0.01f, std::min(sw / static_cast<float>(VIEW_W),
+                                         sh / static_cast<float>(VIEW_H)));
     viewOffsetX = (sw - VIEW_W * viewScale) * 0.5f;
     viewOffsetY = (sh - VIEW_H * viewScale) * 0.5f;
-
-    touchDown = GetTouchPointCount() > 0;
+    const int count = std::min(GetTouchPointCount(), 10);
+    touchDown = count > 0;
     const Vector2 raw = touchDown ? GetTouchPosition(0) : GetMousePosition();
     pointer = ToVirtual(raw);
-    touchPressed = touchDown && previousTouchCount == 0;
-    previousTouchCount = GetTouchPointCount();
+
+    // Track touch IDs so a second finger can tap a button while the first holds movement.
+    newTouchPressCount = 0;
+    int currentIds[10] = {};
+    for (int i = 0; i < count; ++i) {
+        currentIds[i] = GetTouchPointId(i);
+        bool existed = false;
+        for (int j = 0; j < previousTouchIdCount; ++j)
+            if (currentIds[i] == previousTouchIds[j]) { existed = true; break; }
+        if (!existed && newTouchPressCount < 10)
+            newTouchPressPositions[newTouchPressCount++] = ToVirtual(GetTouchPosition(i));
+    }
+    for (int i = 0; i < count; ++i) previousTouchIds[i] = currentIds[i];
+    previousTouchIdCount = count;
+    previousTouchCount = count;
+    touchPressed = newTouchPressCount > 0;
 }
 
 bool PointerInside(Rectangle r) {
@@ -161,8 +184,10 @@ bool PointerInside(Rectangle r) {
 }
 
 bool Pressed(Rectangle r) {
-    return (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && PointerInside(r)) ||
-           (touchPressed && PointerInside(r));
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && PointerInside(r)) return true;
+    for (int i = 0; i < newTouchPressCount; ++i)
+        if (CheckCollisionPointRec(newTouchPressPositions[i], r)) return true;
+    return false;
 }
 
 bool TouchHeld(Rectangle r) {
@@ -188,12 +213,13 @@ bool Button(Rectangle r, const char* label, bool active = true) {
                               : (hover ? C_PANEL_LIT : C_PANEL);
     DrawRectangleRounded(r, 0.22f, 8, fill);
     DrawRectangleRoundedLinesEx(r, 0.22f, 8, 2.0f,
-                              active && hover ? C_MINT : Color{ 76, 96, 133, 255 });
-    const int fs = 19;
-    const int tw = MeasureUIText(label, fs);
+                                active && hover ? C_MINT : Color{ 76, 96, 133, 255 });
+    int fs = std::max(12, std::min(20, static_cast<int>(r.height * 0.42f)));
+    int tw = MeasureUIText(label, fs);
+    while (fs > 12 && tw > r.width - 22.0f) { --fs; tw = MeasureUIText(label, fs); }
     DrawUIText(label, static_cast<int>(r.x + (r.width - tw) * 0.5f),
-             static_cast<int>(r.y + (r.height - fs) * 0.5f - 1),
-             fs, active ? C_WHITE_90 : Color{ 133, 145, 165, 255 });
+               static_cast<int>(r.y + (r.height - fs) * 0.5f - 1),
+               fs, active ? C_WHITE_90 : Color{ 133, 145, 165, 255 });
     return active && Pressed(r);
 }
 
@@ -307,11 +333,9 @@ void UnloadReadableFont() {
 }
 
 int EffectiveUiSize(int requestedSize) {
-    // Keep small labels readable after the 960x540 canvas is fitted to the window.
-    // A 12px physical minimum avoids 8-10px text on smaller desktop windows.
-    const float safeScale = std::max(0.5f, viewScale);
-    const int physicalMinimum = static_cast<int>(std::ceil(12.5f / safeScale));
-    return std::max(requestedSize, physicalMinimum);
+    // Do not enlarge a small label past its panel on low-resolution phone screens.
+    // The whole 16:9 canvas is scaled uniformly, so typography scales with controls.
+    return std::max(1, requestedSize);
 }
 
 void DrawUIText(const char* text, int x, int y, int size, Color color) {
@@ -384,6 +408,41 @@ const char* CharacterAssetPath() {
 #endif
 }
 
+const char* OptionalAssetPath(const char* fileName) {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    return FileExists(fileName) ? fileName : nullptr;
+#else
+    static char candidate[512];
+    std::snprintf(candidate,sizeof(candidate),"assets/%s",fileName);
+    if(FileExists(candidate)) return candidate;
+    std::snprintf(candidate,sizeof(candidate),"../assets/%s",fileName);
+    if(FileExists(candidate)) return candidate;
+    return nullptr;
+#endif
+}
+
+Texture2D LoadOptionalTexture(const char* fileName) {
+    const char* path=OptionalAssetPath(fileName);
+    if(path==nullptr) {
+        TraceLog(LOG_INFO,"ASSET: Optional %s not supplied; using built-in art",fileName);
+        return Texture2D{};
+    }
+    Texture2D texture=LoadTexture(path);
+    if(texture.id!=0) SetTextureFilter(texture,TEXTURE_FILTER_BILINEAR);
+    else TraceLog(LOG_WARNING,"ASSET: Could not load optional image %s",fileName);
+    return texture;
+}
+
+const char* AppIconPath() {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    return "app_icon.png";
+#else
+    if(FileExists("assets/app_icon.png")) return "assets/app_icon.png";
+    if(FileExists("../assets/app_icon.png")) return "../assets/app_icon.png";
+    return nullptr;
+#endif
+}
+
 void LoadGameAssets() {
     backgroundFrames = LoadImageAnim(BackgroundAssetPath(), &backgroundFrameCount);
     if (backgroundFrames.data != nullptr && backgroundFrameCount > 0) {
@@ -414,6 +473,10 @@ void LoadGameAssets() {
         TraceLog(LOG_WARNING, "ASSET: Could not load single character image; using fallback character");
     }
     if (characterTexture.id != 0) SetTextureFilter(characterTexture, TEXTURE_FILTER_BILINEAR);
+    cactusTexture = LoadOptionalTexture("cactus.png");
+    pillarTexture = LoadOptionalTexture("pillar.png");
+    platformLargeTexture = LoadOptionalTexture("platform_large.png");
+    platformSmallTexture = LoadOptionalTexture("platform_small.png");
 }
 
 void UpdateBackgroundAnimation(float dt) {
@@ -437,12 +500,15 @@ void UpdateBackgroundAnimation(float dt) {
 }
 
 void UnloadGameAssets() {
-    if (backgroundTexture.id != 0) UnloadTexture(backgroundTexture);
-    if (characterTexture.id != 0) UnloadTexture(characterTexture);
-    if (backgroundFrames.data != nullptr) UnloadImage(backgroundFrames);
-    backgroundTexture = {};
-    characterTexture = {};
-    backgroundFrames = {};
+    if(backgroundTexture.id!=0) UnloadTexture(backgroundTexture);
+    if(characterTexture.id!=0) UnloadTexture(characterTexture);
+    if(cactusTexture.id!=0) UnloadTexture(cactusTexture);
+    if(pillarTexture.id!=0) UnloadTexture(pillarTexture);
+    if(platformLargeTexture.id!=0) UnloadTexture(platformLargeTexture);
+    if(platformSmallTexture.id!=0) UnloadTexture(platformSmallTexture);
+    if(backgroundFrames.data!=nullptr) UnloadImage(backgroundFrames);
+    backgroundTexture={}; characterTexture={}; cactusTexture={}; pillarTexture={};
+    platformLargeTexture={}; platformSmallTexture={}; backgroundFrames={};
 }
 
 void AddCoin(float x, float y, float phase) {
@@ -724,9 +790,9 @@ void UpdateGame(float dt) {
         if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) move = -1.0f;
     }
 
-    const Rectangle leftTouch  = { 34, 421, 68, 74 };
-    const Rectangle rightTouch = { 112, 421, 68, 74 };
-    const Rectangle jumpTouch  = { 848, 410, 78, 82 };
+    const Rectangle leftTouch  = { 24, 410, 88, 90 };
+    const Rectangle rightTouch = { 122, 410, 88, 90 };
+    const Rectangle jumpTouch  = { 837, 401, 99, 100 };
     if (Held(leftTouch)) move = -1.0f;
     if (Held(rightTouch)) move = 1.0f;
     move = std::clamp(move, -1.0f, 1.0f);
@@ -1096,19 +1162,14 @@ void DrawPlayer() {
 
     // Motion is applied to the full image (not frame-swapped), so it cannot flicker
     // when standing or crop the character when its image resolution changes.
-    const float runPhase = gameClock * 14.0f;
-    const float runBob = moving ? std::fabs(std::sin(runPhase)) * 2.2f : 0.0f;
-    const float idleBob = (!moving && !airborne && !damaged)
-        ? std::sin(gameClock * 2.1f) * 1.1f : 0.0f;
-    const float jumpStretch = airborne ? 1.035f : (landingTimer > 0.0f ? 0.965f : 1.0f);
+    const float jumpStretch = airborne ? 1.025f : (landingTimer > 0.0f ? 0.98f : 1.0f);
     const float drawH = SPRITE_HEIGHT * jumpStretch;
     const float drawW = drawH * aspect;
-    const float offsetY = airborne
-        ? std::clamp(-player.vel.y * 0.006f, -2.0f, 2.0f)
-        : runBob + idleBob;
-    const float rotation = damaged ? (playerFacing * 2.0f)
-        : (airborne ? (player.vel.y < 0.0f ? -playerFacing * 2.0f : playerFacing * 1.5f)
-                    : (moving ? std::sin(runPhase) * 1.4f * playerFacing : 0.0f));
+    // Keep the character's feet on the physics ground line; no bob or rotation while grounded.
+    const float offsetY = airborne ? std::clamp(-player.vel.y * 0.002f, -1.0f, 1.0f) : 0.0f;
+    const float rotation = damaged ? playerFacing
+        : (airborne ? (player.vel.y < 0.0f ? -playerFacing * 1.2f : playerFacing * 0.8f)
+                    : 0.0f);
 
     const Rectangle dest = {
         centerX - drawW * 0.5f,
@@ -1156,25 +1217,19 @@ void DrawParticles() {
 
 void DrawTouchControls() {
 #if defined(__ANDROID__) || defined(PLATFORM_ANDROID) || defined(PLATFORM_WEB)
-    const Rectangle left  = { 34, 421, 68, 74 };
-    const Rectangle right = { 112, 421, 68, 74 };
-    const Rectangle jump  = { 848, 410, 78, 82 };
-    const Color base = { 12, 27, 48, 106 };
-    DrawCircleV({ left.x + 34, left.y + 34 }, 31, base);
-    DrawCircleV({ right.x + 34, right.y + 34 }, 31, base);
-    DrawCircleV({ jump.x + 39, jump.y + 39 }, 36, Color{ 32, 102, 111, 150 });
-    DrawCircleLines(static_cast<int>(left.x + 34), static_cast<int>(left.y + 34),
-                    31, Color{ 214, 239, 255, 145 });
-    DrawCircleLines(static_cast<int>(right.x + 34), static_cast<int>(right.y + 34),
-                    31, Color{ 214, 239, 255, 145 });
-    DrawCircleLines(static_cast<int>(jump.x + 39), static_cast<int>(jump.y + 39),
-                    36, Color{ 128, 255, 208, 190 });
-    DrawTriangle({ left.x + 22, left.y + 34 }, { left.x + 43, left.y + 19 },
-                 { left.x + 43, left.y + 49 }, C_WHITE_90);
-    DrawTriangle({ right.x + 46, right.y + 34 }, { right.x + 25, right.y + 19 },
-                 { right.x + 25, right.y + 49 }, C_WHITE_90);
-    DrawUIText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
-             16, C_WHITE_90);
+    const Rectangle left  = { 24, 410, 88, 90 };
+    const Rectangle right = { 122, 410, 88, 90 };
+    const Rectangle jump  = { 837, 401, 99, 100 };
+    const Color base = { 10, 25, 45, 175 };
+    DrawCircleV({left.x+44,left.y+45},40,base);
+    DrawCircleV({right.x+44,right.y+45},40,base);
+    DrawCircleV({jump.x+49.5f,jump.y+50},45,Color{25,103,100,205});
+    DrawCircleLines((int)(left.x+44),(int)(left.y+45),40,Color{214,239,255,220});
+    DrawCircleLines((int)(right.x+44),(int)(right.y+45),40,Color{214,239,255,220});
+    DrawCircleLines((int)(jump.x+49.5f),(int)(jump.y+50),45,Color{128,255,208,245});
+    DrawTriangle({left.x+23,left.y+45},{left.x+53,left.y+25},{left.x+53,left.y+65},C_WHITE_90);
+    DrawTriangle({right.x+63,right.y+45},{right.x+33,right.y+25},{right.x+33,right.y+65},C_WHITE_90);
+    DrawUIText("JUMP",(int)(jump.x+24),(int)(jump.y+42),17,C_WHITE_90);
 #endif
 }
 
@@ -1243,24 +1298,21 @@ void DrawDamageFeedback() {
 }
 
 void DrawHud() {
-    DrawRectangleRounded({ 16, 13, 300, 79 }, 0.14f, 8, Color{ 13, 26, 45, 222 });
-    DrawRectangleRoundedLinesEx({ 16, 13, 300, 79 }, 0.14f, 8, 1.0f,
-                                Color{ 86, 125, 157, 190 });
-    DrawUIText(TextFormat("LEVEL %02d / %02d", levelIndex + 1, LEVEL_COUNT), 30, 19, 13,
-             Color{ 177, 205, 229, 255 });
-    DrawUIText(LevelName(levelIndex), 30, 36, 11,
-             Color{ 159, 233, 213, 255 });
-    DrawUIText(TextFormat("SCORE %04d", score), 30, 54, 18, C_GOLD);
-    DrawUIText("LIVES", 193, 21, 12, Color{ 177, 205, 229, 255 });
-    for (int i = 0; i < StartingLives(); ++i) {
-        const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
-        DrawHeart(204.0f + i * 17.0f, 50.0f, heart);
+    DrawRectangleRounded({16,13,300,79},0.14f,8,Color{13,26,45,222});
+    DrawRectangleRoundedLinesEx({16,13,300,79},0.14f,8,1.0f,Color{86,125,157,190});
+    DrawUIText(TextFormat("LEVEL %02d / %02d",levelIndex+1,LEVEL_COUNT),30,19,13,Color{177,205,229,255});
+    DrawUIText(LevelName(levelIndex),30,36,11,Color{159,233,213,255});
+    DrawUIText(TextFormat("SCORE %04d",score),30,54,18,C_GOLD);
+    DrawUIText("LIVES",193,21,12,Color{177,205,229,255});
+    for(int i=0;i<StartingLives();++i) {
+        const Color heart=i<player.lives?C_CORAL:Color{75,82,103,255};
+        DrawHeart(204.0f+i*17.0f,50.0f,heart);
     }
-
-    DrawRectangleRounded({ 768, 17, 174, 42 }, 0.20f, 7, Color{ 13, 26, 45, 205 });
-    DrawUIText(DifficultyName(), 785, 29, 15, C_WHITE_90);
-    if (Button({ 891, 20, 39, 36 }, "II")) screen = Screen::Paused;
-    DrawUIText("ESC / P = PAUSE", 766, 65, 12, Color{ 225, 239, 250, 190 });
+    DrawRectangleRounded({750,13,190,56},0.18f,7,Color{13,26,45,225});
+    DrawRectangleRoundedLinesEx({750,13,190,56},0.18f,7,1.0f,Color{86,125,157,190});
+    DrawUIText(DifficultyName(),765,30,15,C_WHITE_90);
+    if(Button({864,18,68,46},"II")) screen=Screen::Paused;
+    DrawUIText("ESC / P = PAUSE",766,72,12,Color{225,239,250,200});
 }
 
 void DrawGame() {
@@ -1440,7 +1492,13 @@ int main() {
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(VIEW_W, VIEW_H, "Tiny Trails - Mini Platformer");
     SetTargetFPS(60);
+#if !defined(__ANDROID__) && !defined(PLATFORM_ANDROID)
     SetWindowMinSize(VIEW_W, VIEW_H);
+    if(const char* iconPath=AppIconPath()) {
+        Image iconImage=LoadImage(iconPath);
+        if(iconImage.data!=nullptr) { SetWindowIcon(iconImage); UnloadImage(iconImage); }
+    }
+#endif
     LoadGameAssets();
     LoadReadableFont();
     InitGameAudio();
