@@ -177,6 +177,10 @@ bool Held(Rectangle r) {
            TouchHeld(r);
 }
 
+// Forward declarations: UI controls are defined before the font wrapper implementations.
+void DrawUIText(const char* text, int x, int y, int size, Color color);
+int MeasureUIText(const char* text, int size);
+
 bool Button(Rectangle r, const char* label, bool active = true) {
     const bool hover = PointerInside(r);
     const Color fill = !active ? Color{ 39, 46, 64, 255 }
