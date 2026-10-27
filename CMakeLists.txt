@@ -31,6 +31,13 @@ if(ANDROID)
     add_library(main SHARED src/main.cpp)
     target_compile_features(main PRIVATE cxx_std_17)
     target_link_libraries(main PRIVATE raylib android log)
+
+    # raylib 6.0 adds android_native_app_glue.c to its static library for Android,
+    # but sets -u ANativeActivity_onCreate in the raylib subdirectory's linker flags.
+    # This app target is created in the parent directory, so explicitly force the
+    # glue object's entry point into libmain.so for Android NativeActivity.
+    target_link_options(main PRIVATE "-Wl,-u,ANativeActivity_onCreate")
+
     target_compile_definitions(main PRIVATE PLATFORM_ANDROID)
 else()
     find_package(raylib CONFIG REQUIRED)
