@@ -1719,6 +1719,14 @@ void DrawHud() {
         DrawHeart(204.0f+i*17.0f,50.0f,heart);
     }
     if (cheatEnabled) DrawUIText("INVINCIBLE", 204, 70, 10, C_MINT);
+    if (magnetTimer > 0.0f) {
+        DrawRectangleRounded({330,15,112,32},0.16f,7,Color{37,22,54,225});
+        DrawUIText(TextFormat("MAGNET %.0fs",magnetTimer),339,24,12,Color{255,139,205,255});
+    }
+    if (bootsTimer > 0.0f) {
+        DrawRectangleRounded({451,15,112,32},0.16f,7,Color{51,39,20,225});
+        DrawUIText(TextFormat("BOOTS %.0fs",bootsTimer),460,24,12,Color{255,218,111,255});
+    }
     DrawRectangleRounded({750,13,190,56},0.18f,7,Color{13,26,45,225});
     DrawRectangleRoundedLinesEx({750,13,190,56},0.18f,7,1.0f,Color{86,125,157,190});
     DrawUIText(DifficultyName(),765,30,15,C_WHITE_90);
@@ -2058,7 +2066,10 @@ int main() {
         } else if (screen == Screen::Controls) {
             if (IsKeyPressed(KEY_ESCAPE)) screen = Screen::Menu;
         } else if (screen == Screen::Settings) {
-            if (IsKeyPressed(KEY_ESCAPE)) screen = Screen::Menu;
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                screen = settingsFromPause ? Screen::Paused : Screen::Menu;
+                settingsFromPause = false;
+            }
             if (IsKeyPressed(KEY_BACKSPACE) && !cheatPinEntry.empty()) cheatPinEntry.pop_back();
             int ch = GetCharPressed();
             while (ch > 0) {
