@@ -7,7 +7,7 @@ The Android package ID remains `com.workrcs.tinytrails` for later compatibility 
 ## Current playable foundation
 
 - A 3D third-person world spanning four connected regions: Emerald Wilds, Golden Dunes, Frostbound Pass, and Ember Frontier
-- Desktop-first controls: WASD to move relative to the camera, Space to jump, left click or J to attack, hold and drag the right mouse button to orbit the camera, use the mouse wheel to zoom, K to use Blink, and Tab / P / Escape to pause
+- Desktop-first controls: WASD to move relative to the camera, hold Shift to sprint, Space to jump, left click or J to attack, hold and drag the right mouse button to orbit the camera, use the mouse wheel to zoom, K to use Blink, and Tab / P / Escape to pause
 - A resizable PC window, desktop HUD, mission callouts, player HP/XP, monster count, boss HP, and status messages
 - Bundled-at-build CC0 GLB character models for the hero, monster, and boss, plus Kenney Nature Kit tree/rock models; optional user-installed Sketchfab models can override the character models, with procedural fallback art if downloads are unavailable
 - Four sequential boss encounters with separate health pools, mission text, unlock requirements, and a final victory state
@@ -17,7 +17,7 @@ The Android package ID remains `com.workrcs.tinytrails` for later compatibility 
 - Optional Kenney Nature Kit trees/rocks and manually installed Sketchfab model assets
 - No backend/server or internet connection is required while playing
 
-**This is the first 3D gameplay foundation, not the final high-graphics release.** Imported Sketchfab GLB/glTF models are supported once you download them and install them locally; until then the game uses procedural fallback meshes. Imported static models do not yet play run/jump/attack clips. Improved terrain and materials, richer boss patterns, save-to-disk progression, and detailed performance profiling remain further PC milestones.
+**This is the first 3D gameplay foundation, not the final high-graphics release.** Bundled CC0 character GLBs load their embedded skeletal `Idle`, `Walk`, `Run`, `Attack`, and `Hit` clips where supported; movement plays walk/run, and Shift sprints on desktop. The model loader also aligns the model base to the ground and reports animation clips in the startup log. Improved terrain and materials, richer boss patterns, save-to-disk progression, and detailed performance profiling remain further PC milestones.
 
 ## 1. Build and test the PC version first
 
@@ -50,6 +50,7 @@ Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. Runtime
 | Action | Keyboard | Mouse |
 |---|---|---|
 | Move relative to camera | WASD | — |
+| Sprint | Hold Shift | — |
 | Jump | Space | — |
 | Attack | J | Left click |
 | Blink special | K | — |
