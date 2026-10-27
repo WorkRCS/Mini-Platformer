@@ -2040,9 +2040,13 @@ int main() {
         const float dt = std::min(GetFrameTime(), 0.033f);
         gameClock += dt;
         UpdateBackgroundAnimation(dt);
+        UpdateBackgroundMusic();
         UpdatePointer();
 
-        if (screen == Screen::Menu) {
+        if (screen == Screen::Loading) {
+            loadingTimer = std::max(0.0f, loadingTimer - dt);
+            if (loadingTimer <= 0.0f) screen = Screen::Menu;
+        } else if (screen == Screen::Menu) {
             if (IsKeyPressed(KEY_ENTER) || IsGamepadAvailable(0) &&
                 IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) {
                 StartGame();
@@ -2072,6 +2076,7 @@ int main() {
         BeginTextureMode(canvas);
         ClearBackground(C_INK);
         switch (screen) {
+            case Screen::Loading: DrawLoadingScreen(); break;
             case Screen::Menu: DrawTitle(); break;
             case Screen::Controls: DrawControlsScreen(); break;
             case Screen::Settings: DrawSettingsScreen(); break;
