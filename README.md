@@ -9,7 +9,7 @@ The Android package ID remains `com.workrcs.tinytrails` for later compatibility 
 - A 3D third-person world spanning four connected regions: Emerald Wilds, Golden Dunes, Frostbound Pass, and Ember Frontier
 - Desktop-first controls: WASD to move relative to the camera, Space to jump, left click or J to attack, hold and drag the right mouse button to orbit the camera, use the mouse wheel to zoom, K to use Blink, and Tab / P / Escape to pause
 - A resizable PC window, desktop HUD, mission callouts, player HP/XP, monster count, boss HP, and status messages
-- Optional Sketchfab GLB/glTF hero, monster, boss, tree, and rock models with procedural fallback art; roaming enemies with basic chase/attack behavior
+- Bundled-at-build CC0 GLB character models for the hero, monster, and boss, plus Kenney Nature Kit tree/rock models; optional user-installed Sketchfab models can override the character models, with procedural fallback art if downloads are unavailable
 - Four sequential boss encounters with separate health pools, mission text, unlock requirements, and a final victory state
 - Melee attacks, an area special ability, hit impact, particles, monster defeat effects, hurt feedback, and rebirth/respawn
 - Four biome palettes with procedural trees, rocks, crystals, trails, and boss altars
@@ -29,7 +29,7 @@ Install [MSYS2](https://www.msys2.org/) and open **MSYS2 UCRT64**. Install the b
 pacman -S --needed git mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
 ```
 
-From the repository root, optionally fetch selected free assets while online:
+From the repository root, fetch the free 3D character, environment, and sound assets while online (recommended for the full desktop art set):
 
 ```powershell
 .\scripts\fetch-openworld-assets.ps1
@@ -61,7 +61,9 @@ Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. Runtime
 
 From Windows PowerShell, the helper script can look up official download links, fetch packs, extract them in a temporary folder, and copy only selected runtime files into `assets/`. You do not have to browse and download each chosen file manually. It is optional; the game keeps procedural environment and synthesized sound fallbacks if downloads or expected file formats are unavailable.
 
-The optional helper below installs models you have downloaded from Sketchfab (it does not bypass the site login or download controls):
+The desktop asset-fetch script downloads the default CC0 hero, monster, and boss models into `assets/3d/` and bundles them beside the executable, so they are available offline when the game runs. Their source and licence information is in [`assets/3d/CC0_MODEL_CREDITS.md`](assets/3d/CC0_MODEL_CREDITS.md).
+
+The helper below can additionally install models you have downloaded from Sketchfab as overrides (it does not bypass the site login or download controls):
 
 1. Download a free model from the source pages listed in [`assets/3d/SKETCHFAB_CREDITS.md`](assets/3d/SKETCHFAB_CREDITS.md) and extract the downloaded archive.
 2. In PowerShell, pass the model file paths to the installer. Example:
