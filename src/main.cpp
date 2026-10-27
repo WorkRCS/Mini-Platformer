@@ -1469,7 +1469,7 @@ void DrawSpike(const Spike& spike) {
             DrawRectangleRounded({x+w*.06f,y+h-11,w*.88f,10},.08f,5,Color{85,101,129,255});
         }
     
-    } else if(spike.type==1) {} else if(spike.type==1) {
+    } else if(spike.type==1) {
         DrawEllipse((int)(x+w*.5f),(int)(y+h-4),w*.58f,8,Color{18,49,48,255});
         DrawCircleV({x+w*.22f,y+h*.60f},13,Color{37,127,84,255});
         DrawCircleV({x+w*.48f,y+h*.45f},16,Color{66,178,98,255});
