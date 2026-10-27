@@ -9,7 +9,7 @@ The game is being reworked from the old 2D platformer into an offline, third-per
 - Procedural player and monster meshes as a fallback, with a sword attack, area special ability, damage, defeat effects, particles, and rebirth/respawn feedback
 - Roaming enemy creatures with health and basic chase/attack AI
 - Four boss encounters with separate health pools, mission text, sequential unlocks, and a final victory state
-- Offline progression, XP, health, local game state, generated sound effects, and generated looping background music; no backend/server is required
+- Offline session progression, XP, health, generated sound effects, and generated looping background music; no backend/server is required. Persistent save-to-disk is a later milestone.
 - Optional loading of Kenney Nature Kit glTF/GLB trees and rocks plus optional WAV impact/UI effects, with procedural scenery and synthesized sound fallback when those files are not installed
 
 **Important:** this is the first playable 3D foundation, not yet the final high-detail release. The current hero, creatures, and world props are procedural placeholder meshes. The next development pass is to integrate rigged character/monster GLB models and their animation clips, improve terrain/materials/lighting, add more mission types, and optimize frame time and memory for the target Android phone.
@@ -67,7 +67,7 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 & $adb shell monkey -p com.workrcs.tinytrails 1
 ```
 
-The procedural fallback means the game can still start if you skip the asset-download step.
+The procedural fallback means the game can still start if you skip the asset-download step. GitHub Actions also tries to fetch these optional assets before creating its APK artifact; that fetch is allowed to fail without blocking the fallback build.
 
 ## Desktop build (MSYS2 UCRT64)
 
