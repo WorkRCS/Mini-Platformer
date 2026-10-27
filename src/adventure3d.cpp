@@ -365,8 +365,8 @@ Model LoadModelFromManifest(const char* manifestPath) {
     if (raw == nullptr) return Model{};
     std::string path(raw);
     UnloadFileText(raw);
-    while (!path.empty() && (path.back() == '${ch}' || path.back() == '${ch}' || path.back() == ' ' || path.back() == '${ch}')) path.pop_back();
-    while (!path.empty() && (path.front() == ' ' || path.front() == '${ch}')) path.erase(path.begin());
+    while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' ' || path.back() == '\t')) path.pop_back();
+    while (!path.empty() && (path.front() == ' ' || path.front() == '\t')) path.erase(path.begin());
     if (path.empty() || !FileExists(path.c_str())) return Model{};
     return LoadModel(path.c_str());
 }
