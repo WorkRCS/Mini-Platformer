@@ -1,6 +1,6 @@
 # Android build
 
-The Android project is configured for a landscape NativeActivity and packages the game's root `assets/` folder into the APK. The debug APK includes `arm64-v8a`, `armeabi-v7a`, and `x86_64` native libraries for broad device and emulator compatibility.
+The Android project is configured for a landscape NativeActivity and packages the game's root `assets/` folder into the APK. The debug APK targets `arm64-v8a` only, optimized for testing on a modern ARM64 Android phone. It will not run on 32-bit-only phones or x86_64 emulators.
 
 ## Build versions
 
