@@ -7,7 +7,7 @@ The Android package ID remains `com.workrcs.tinytrails` for later compatibility 
 ## Current playable foundation
 
 - A 3D third-person world spanning four connected regions: Emerald Wilds, Golden Dunes, Frostbound Pass, and Ember Frontier
-- Desktop-first controls: WASD / arrow keys to move, Space to jump, left click or J to attack, right click or K to use Blink, and Tab / P / Escape to pause
+- Desktop-first controls: WASD to move relative to the camera, Space to jump, left click or J to attack, hold and drag the right mouse button to orbit the camera, use the mouse wheel to zoom, K to use Blink, and Tab / P / Escape to pause
 - A resizable PC window, desktop HUD, mission callouts, player HP/XP, monster count, boss HP, and status messages
 - Procedural hero and creature meshes as fallback art; roaming enemies with basic chase/attack behavior
 - Four sequential boss encounters with separate health pools, mission text, unlock requirements, and a final victory state
@@ -49,10 +49,12 @@ Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. If asse
 
 | Action | Keyboard | Mouse |
 |---|---|---|
-| Move | WASD or arrow keys | — |
+| Move relative to camera | WASD | — |
 | Jump | Space | — |
 | Attack | J | Left click |
-| Blink special | K | Right click |
+| Blink special | K | — |
+| Orbit camera | — | Hold right mouse button and drag |
+| Zoom camera | — | Mouse wheel |
 | Pause / resume | Tab, P, or Esc | — |
 
 ### PC asset setup
