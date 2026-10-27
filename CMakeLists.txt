@@ -37,3 +37,9 @@ else()
         target_link_libraries(TinyTrails PRIVATE winmm)
     endif()
 endif()
+
+# Bundle supplied art next to the desktop executable when assets are present.
+# Running from either the repository root or the build directory will then find them.
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_BINARY_DIR}")
+endif()
