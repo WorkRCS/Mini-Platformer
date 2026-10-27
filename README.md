@@ -13,6 +13,8 @@ A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the an
 - Keyboard, gamepad, and on-screen touch controls
 - Procedurally generated jump, coin, stomp, damage, menu, and level sound effects (no sound files needed)
 - Readable anti-aliased system UI font (Segoe UI on Windows, Roboto on Android, DejaVu/Liberation on Linux where installed)
+- Desktop executable/window icon and Android launcher icon
+- Optional image assets for cactus, pillar, large platform, and small platform
 - Resizable desktop window and landscape Android project
 
 ## Controls
@@ -31,7 +33,13 @@ Open **MSYS2 UCRT64** (not PowerShell) and install the dependencies:
 pacman -S --needed git mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
 ```
 
-Both visual assets are already tracked in `assets/`, so a fresh clone contains them. If an older clone reports `Failed to open file`, run `git pull origin main` first, then re-run the CMake configure command so the assets are copied to `build/assets/`.
+The background, character, and app icon files are tracked in `assets/`. The C++ code also recognises these optional transparent PNGs if you add them:
+- `assets/cactus.png` — 64×96 px recommended
+- `assets/pillar.png` — 64×128 px recommended
+- `assets/platform_large.png` — 256×64 px recommended
+- `assets/platform_small.png` — 128×32 px recommended
+
+Those four object files are not required; clear built-in art is drawn until you add your own. If an older clone reports `Failed to open file`, run `git pull origin main` first, then re-run the CMake configure command so the assets are copied to `build/assets/`.
 
 Clone the project and build it:
 
