@@ -17,7 +17,7 @@ The Android package ID remains `com.workrcs.tinytrails` for later compatibility 
 - Optional Kenney Nature Kit trees/rocks and manually installed Sketchfab model assets
 - No backend/server or internet connection is required while playing
 
-**This is the first 3D gameplay foundation, not the final high-graphics release.** The player and monster shapes are currently procedural placeholder meshes, and their animations are procedural. Rigged hero/monster models with imported run/jump/attack clips, improved terrain and materials, additional mission objectives, richer boss patterns, save-to-disk progression, and detailed performance profiling are further PC milestones.
+**This is the first 3D gameplay foundation, not the final high-graphics release.** Imported Sketchfab GLB/glTF models are supported once you download them and install them locally; until then the game uses procedural fallback meshes. Imported static models do not yet play run/jump/attack clips. Improved terrain and materials, richer boss patterns, save-to-disk progression, and detailed performance profiling remain further PC milestones.
 
 ## 1. Build and test the PC version first
 
@@ -67,7 +67,7 @@ The optional helper below installs models you have downloaded from Sketchfab (it
 2. In PowerShell, pass the model file paths to the installer. Example:
 
 ```powershell
-.\\scripts\\install-sketchfab-models.ps1 -HeroPath "C:\\Users\\YOUR_NAME\\Downloads\\hero.glb" -MonsterPath "C:\\Users\\YOUR_NAME\\Downloads\\monster.glb" -TreePath "C:\\Users\\YOUR_NAME\\Downloads\\tree.glb" -RockPath "C:\\Users\\YOUR_NAME\\Downloads\\rock.glb"
+.\scripts\install-sketchfab-models.ps1 -HeroPath "C:\Users\YOUR_NAME\Downloads\hero.glb" -MonsterPath "C:\Users\YOUR_NAME\Downloads\monster.glb" -TreePath "C:\Users\YOUR_NAME\Downloads\tree.glb" -RockPath "C:\Users\YOUR_NAME\Downloads\rock.glb"
 ```
 
 Use the actual paths on your PC; `.gltf` files are also supported if the adjacent textures and `.bin` files are kept together. Optional files are loaded as follows: `sketchfab_hero`, `sketchfab_monster`, `sketchfab_boss`, `sketchfab_tree`, and `sketchfab_rock` under `assets/3d/`. Review the credits file and the exact model page's current license before sharing a build. Sketchfab model downloads may require a signed-in account.
