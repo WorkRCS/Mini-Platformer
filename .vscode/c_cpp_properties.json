@@ -1,0 +1,23 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "MSYS2 UCRT64",
+      "compilerPath": "C:/msys64/ucrt64/bin/g++.exe",
+      "compilerArgs": [
+        "-std=c++17"
+      ],
+      "intelliSenseMode": "windows-gcc-x64",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/msys64/ucrt64/include"
+      ],
+      "defines": [
+        "PLATFORM_DESKTOP",
+        "GRAPHICS_API_OPENGL_33"
+      ]
+    }
+  ]
+}
