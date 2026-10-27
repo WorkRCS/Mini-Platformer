@@ -867,32 +867,112 @@ void DrawGame() {
     DrawDamageFeedback();
 }
 
+void DrawMenuHero(float x, float y) {
+    const float bob = std::sin(gameClock * 2.8f) * 4.0f;
+    y += bob;
+    DrawCircle(static_cast<int>(x + 18.0f), static_cast<int>(y + 28.0f),
+               46.0f, Color{ 91, 245, 190, 19 });
+    DrawCircleLines(static_cast<int>(x + 18.0f), static_cast<int>(y + 28.0f),
+                    39.0f + std::sin(gameClock * 2.0f) * 2.0f,
+                    Color{ 117, 255, 204, 80 });
+
+    // Floating collectible, trail, and a large preview character.
+    DrawCircleV({ x - 42.0f, y + 1.0f + std::sin(gameClock * 3.0f) * 4.0f },
+                14.0f, Color{ 255, 204, 77, 35 });
+    DrawCircleV({ x - 42.0f, y + 1.0f + std::sin(gameClock * 3.0f) * 4.0f },
+                8.0f, C_GOLD);
+    DrawCircleLines(static_cast<int>(x - 42.0f),
+                    static_cast<int>(y + 1.0f + std::sin(gameClock * 3.0f) * 4.0f),
+                    8.0f, Color{ 255, 249, 198, 255 });
+
+    DrawEllipse(static_cast<int>(x + 18.0f), static_cast<int>(y + 76.0f),
+                32.0f, 7.0f, Color{ 4, 15, 28, 125 });
+    DrawRectangleRounded({ x + 3.0f, y + 45.0f, 30.0f, 30.0f },
+                         0.26f, 8, Color{ 24, 68, 91, 255 });
+    DrawRectangleRounded({ x + 1.0f, y + 38.0f, 34.0f, 32.0f },
+                         0.24f, 8, C_MINT);
+    DrawRectangleRoundedLinesEx({ x + 1.0f, y + 38.0f, 34.0f, 32.0f },
+                                0.24f, 8, 2.0f, Color{ 16, 46, 68, 255 });
+    DrawRectangleRounded({ x + 3.0f, y + 49.0f, 30.0f, 6.0f },
+                         0.35f, 6, C_GOLD);
+    DrawCircleV({ x + 18.0f, y + 28.0f }, 19.0f,
+                Color{ 226, 255, 241, 255 });
+    DrawCircleLines(static_cast<int>(x + 18.0f), static_cast<int>(y + 28.0f),
+                    19.0f, Color{ 16, 46, 68, 255 });
+    DrawCircleV({ x + 18.0f, y + 17.0f }, 15.0f, Color{ 39, 94, 123, 255 });
+    DrawRectangleRounded({ x + 2.0f, y + 19.0f, 32.0f, 10.0f },
+                         0.3f, 6, Color{ 74, 151, 171, 255 });
+    DrawCircleV({ x + 12.0f, y + 29.0f }, 4.5f, WHITE);
+    DrawCircleV({ x + 24.0f, y + 29.0f }, 4.5f, WHITE);
+    DrawCircleV({ x + 13.0f, y + 29.0f }, 2.2f, C_INK);
+    DrawCircleV({ x + 25.0f, y + 29.0f }, 2.2f, C_INK);
+    DrawCircleV({ x + 4.0f, y + 39.0f }, 2.0f, C_CORAL);
+    DrawCircleV({ x + 32.0f, y + 39.0f }, 2.0f, C_CORAL);
+}
+
 void DrawTitle() {
     DrawBackground(0.0f);
     DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
-                           Color{ 10, 17, 38, 165 }, Color{ 13, 28, 48, 110 });
-    DrawCircle(480, 126, 78, Color{ 105, 245, 190, 18 });
-    DrawCircleLines(480, 126, 68, Color{ 129, 255, 210, 110 });
-    DrawCircleLines(480, 126, 56, Color{ 129, 255, 210, 70 });
-    TextCentered("TINY TRAILS", 82, 48, C_WHITE_90);
-    TextCentered("A little platform adventure", 137, 18, C_MINT);
-    DrawRectangleRounded({ 332, 183, 296, 333 }, 0.08f, 12,
-                         Color{ 10, 22, 40, 205 });
-    DrawRectangleRoundedLinesEx({ 332, 183, 296, 333 }, 0.08f, 12,
-                              1.5f, Color{ 96, 135, 166, 160 });
+                           Color{ 8, 16, 38, 218 }, Color{ 10, 25, 43, 208 });
 
-    if (Button({ 370, 217, 220, 48 }, "PLAY")) StartGame();
-    if (Button({ 370, 276, 220, 48 },
+    // Left hero panel.
+    DrawRectangleRounded({ 42, 42, 455, 456 }, 0.06f, 12,
+                         Color{ 12, 26, 48, 165 });
+    DrawRectangleRoundedLinesEx({ 42, 42, 455, 456 }, 0.06f, 12, 1.5f,
+                                Color{ 88, 136, 164, 150 });
+    DrawRectangleRounded({ 72, 71, 205, 28 }, 0.45f, 8,
+                         Color{ 35, 96, 91, 220 });
+    DrawText("A TINY PLATFORM ADVENTURE", 84, 79, 11, C_MINT);
+    DrawText("TINY", 75, 120, 54, C_WHITE_90);
+    DrawText("TRAILS", 73, 169, 58, C_MINT);
+    DrawText("JUMP  /  COLLECT  /  SURVIVE", 80, 239, 15,
+             Color{ 201, 224, 239, 255 });
+
+    // Floating islands make the game identity readable before pressing Play.
+    DrawRectangleRounded({ 84, 365, 220, 21 }, 0.24f, 7,
+                         Color{ 59, 114, 102, 255 });
+    DrawRectangleRounded({ 84, 365, 220, 7 }, 0.25f, 7, C_MINT);
+    DrawRectangleRounded({ 328, 326, 95, 18 }, 0.24f, 7,
+                         Color{ 59, 114, 102, 255 });
+    DrawRectangleRounded({ 328, 326, 95, 6 }, 0.25f, 7, C_MINT);
+    DrawMenuHero(201.0f, 278.0f);
+    DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
+    DrawCircleV({ 353, 297 }, 8, C_GOLD);
+    DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
+    DrawText("3 LEVELS", 81, 427, 17, C_GOLD);
+    DrawText("Easy, Normal and Hard difficulty", 81, 454, 14,
+             Color{ 177, 203, 223, 255 });
+    DrawText("KEYBOARD  /  CONTROLLER  /  TOUCH", 81, 475, 11,
+             Color{ 145, 180, 205, 255 });
+
+    // Right-hand action card.
+    DrawRectangleRounded({ 527, 42, 391, 456 }, 0.07f, 12,
+                         Color{ 10, 21, 40, 238 });
+    DrawRectangleRoundedLinesEx({ 527, 42, 391, 456 }, 0.07f, 12, 2.0f,
+                                Color{ 79, 121, 158, 220 });
+    DrawText("MAIN MENU", 570, 76, 23, C_WHITE_90);
+    DrawText("Choose your next move", 570, 106, 14,
+             Color{ 160, 191, 216, 255 });
+    DrawRectangle(570, 132, 305, 1, Color{ 77, 104, 137, 190 });
+
+    if (Button({ 570, 154, 305, 54 }, "PLAY")) StartGame();
+    if (Button({ 570, 223, 305, 54 },
                TextFormat("DIFFICULTY: %s", DifficultyName()))) {
         difficulty = (difficulty + 1) % 3;
+        PlayFx(sfxMenu);
     }
-    if (Button({ 370, 335, 220, 48 }, "HOW TO PLAY")) screen = Screen::Controls;
-    DrawText("Keyboard  /  Gamepad  /  Touch", 354, 403, 16,
-             Color{ 182, 204, 224, 255 });
-    TextCentered("Collect coins  -  avoid spikes  -  reach the flag", 434, 14,
-                 Color{ 166, 191, 214, 255 });
-    TextCentered("3 SHORT LEVELS  -  NO EXTRA ASSETS", 458, 13,
-                 Color{ 129, 157, 183, 255 });
+    if (Button({ 570, 292, 305, 54 }, "HOW TO PLAY")) {
+        PlayFx(sfxMenu);
+        screen = Screen::Controls;
+    }
+
+    DrawRectangleRounded({ 570, 372, 305, 71 }, 0.12f, 8,
+                         Color{ 22, 42, 64, 255 });
+    DrawText("BEST RUN", 590, 385, 11, Color{ 151, 183, 207, 255 });
+    DrawText(TextFormat("%04d", highScore), 590, 402, 25, C_GOLD);
+    DrawText("Collect coins. Reach the flag.", 688, 402, 12, C_WHITE_90);
+    DrawText("ESC / P pauses during a run", 570, 460, 12,
+             Color{ 153, 183, 207, 255 });
 }
 
 void DrawControlsScreen() {
