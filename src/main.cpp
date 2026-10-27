@@ -1928,24 +1928,24 @@ void DrawSettingsScreen() {
     const std::string masked=cheatPinEntry.empty()?"ENTER 5-DIGIT PIN":std::string(cheatPinEntry.size(),'*');
     DrawUIText(masked.c_str(),349,204,16,C_WHITE_90);
 
-    const int colX[3]={365,425,485};
-    const int rowY[3]={239,271,303};
+    const int colX[3]={350,425,500};
+    const int rowY[3]={236,273,310};
     const char* labels[9]={"1","2","3","4","5","6","7","8","9"};
     for(int i=0;i<9;++i) {
         const int col=i%3,row=i/3;
-        if(Button({(float)colX[col],(float)rowY[row],52,28},labels[i])) {
+        if(Button({(float)colX[col],(float)rowY[row],60,33},labels[i])) {
             if(cheatPinEntry.size()<5) cheatPinEntry.push_back(labels[i][0]);
             settingsMessage.clear(); settingsPinError=false;
         }
     }
-    if(Button({348,335,78,29},"CLEAR")) {
+    if(Button({335,346,82,31},"CLEAR")) {
         cheatPinEntry.clear(); settingsMessage.clear(); settingsPinError=false;
     }
-    if(Button({437,335,52,29},"0")) {
+    if(Button({430,346,58,31},"0")) {
         if(cheatPinEntry.size()<5) cheatPinEntry.push_back('0');
         settingsMessage.clear(); settingsPinError=false;
     }
-    if(Button({500,335,78,29},"DEL")) {
+    if(Button({501,346,82,31},"DEL")) {
         if(!cheatPinEntry.empty()) cheatPinEntry.pop_back();
         settingsMessage.clear(); settingsPinError=false;
     }
@@ -1953,8 +1953,8 @@ void DrawSettingsScreen() {
     const Color statusColor=cheatEnabled?C_MINT:(settingsPinError?C_CORAL:Color{186,208,226,255});
     const char* status=cheatEnabled?"CHEAT ACTIVE - INVINCIBLE":
         (settingsMessage.empty()?"CHEAT OFF":settingsMessage.c_str());
-    TextCentered(status,373,12,statusColor);
-    if(Button({310,395,160,38},"UNLOCK")) {
+    TextCentered(status,382,12,statusColor);
+    if(Button({310,401,160,38},"UNLOCK")) {
         if(cheatPinEntry=="74330") {
             cheatEnabled=true;
             settingsMessage="Explore mode enabled for this session.";
@@ -1965,12 +1965,12 @@ void DrawSettingsScreen() {
         }
         cheatPinEntry.clear(); PlayFx(sfxMenu);
     }
-    if(Button({490,395,160,38},"DISABLE CHEAT")) {
+    if(Button({490,401,160,38},"DISABLE CHEAT")) {
         cheatEnabled=false; cheatPinEntry.clear();
         settingsMessage="Cheat disabled. Normal rules restored.";
         settingsPinError=false; PlayFx(sfxMenu);
     }
-    if(Button({370,453,220,35},"BACK")) {
+    if(Button({370,456,220,35},"BACK")) {
         screen=settingsFromPause?Screen::Paused:Screen::Menu;
         settingsFromPause=false;
     }
