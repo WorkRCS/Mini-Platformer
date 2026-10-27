@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(TinyTrails LANGUAGES C CXX)
 
+if(WIN32 AND MINGW)
+    enable_language(RC)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -35,6 +39,15 @@ else()
     target_link_libraries(TinyTrails PRIVATE raylib)
     if(MINGW)
         target_link_libraries(TinyTrails PRIVATE winmm)
+    endif()
+
+    if(WIN32 AND MINGW)
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/windows_icon.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/windows_icon.rc"
+            @ONLY
+        )
+        target_sources(TinyTrails PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/windows_icon.rc")
     endif()
 endif()
 
