@@ -2,34 +2,22 @@
 
 The Android project is configured for a landscape NativeActivity and packages the game's root `assets/` folder into the APK. The debug APK includes `arm64-v8a`, `armeabi-v7a`, and `x86_64` native libraries for broad device and emulator compatibility.
 
-## Requirements
+## Build versions
 
-- Android Studio (or Android SDK command-line tools)
-- JDK 17
-- Android SDK Platform 35 and Build Tools 35.0.0
-- Android NDK (side-by-side)
+- Gradle Wrapper 9.6.0 (supports running Gradle on Java 25)
+- Android Gradle Plugin 9.4.0
+- JDK 17 or 25
+- Android SDK Platform 35
+- Android SDK Build Tools 36.0.0
+- Android NDK 28.2.13676358
 - Android SDK CMake 4.1.2
 - Internet access for the first build (Gradle and raylib sources are downloaded)
 
-## Permanent Gradle JDK setting
+## Gradle JDK settings
 
-This project stores the Android Studio Gradle JDK selection as `JAVA_HOME` in the project-level IDE settings. Set the Windows user `JAVA_HOME` environment variable to a JDK 17 installation before opening Android Studio. The setting is kept in both the repository root and the `android/` project so either project-opening location uses the same JDK macro.
+This repository sets the Android Studio Gradle JDK option to `JAVA_HOME` in its project settings. If you use the current Android Studio bundled Java 25, Gradle 9.6.0 is compatible with it. The project also builds under JDK 17, which is useful for CI.
 
-For Windows PowerShell, with Temurin JDK 17 installed at the usual location:
-
-```powershell
-$jdk = Get-ChildItem "C:\Program Files\Eclipse Adoptium" -Directory |
-    Where-Object { $_.Name -like "jdk-17*" } |
-    Select-Object -First 1
-
-if (-not $jdk) { throw "JDK 17 not found under C:\Program Files\Eclipse Adoptium" }
-
-[Environment]::SetEnvironmentVariable("JAVA_HOME", $jdk.FullName, "User")
-$env:JAVA_HOME = $jdk.FullName
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
-```
-
-Restart Android Studio after changing the environment, then sync the project. Verify the Gradle JDK dropdown shows `JAVA_HOME`, not JDK 25. Android Gradle Plugin 8.8.2 requires JDK 17; keep the Gradle wrapper at 8.10.2 unless the Android Gradle Plugin is upgraded and compatibility is checked too.
+If Android Studio still displays a stale JDK warning after pulling, close Android Studio fully and reopen the repository so it reloads the updated Gradle wrapper. In Settings > Build, Execution, Deployment > Build Tools > Gradle, the Gradle JDK can be set to `JAVA_HOME` or the current Studio JDK; both Java 17 and Java 25 are compatible with this updated Gradle/AGP pair.
 
 ## Build a debug APK on Windows
 
@@ -64,9 +52,9 @@ Or copy the APK to the phone and open it there. Android may ask you to allow ins
 
 If a native-build component is missing, open Android Studio > Tools > SDK Manager and install:
 - Android SDK Platform 35
-- Android SDK Build-Tools 35.0.0
+- Android SDK Build-Tools 36.0.0
 - Android SDK Command-line Tools (latest)
-- NDK (side by side)
+- Android NDK 28.2.13676358
 - CMake 4.1.2
 
 The game uses bundled assets rather than downloading resources at startup. The five-second splash is an animated progress display while the game initializes; it does not mean game data is being downloaded on the phone.
