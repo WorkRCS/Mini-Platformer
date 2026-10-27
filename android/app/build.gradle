@@ -6,6 +6,13 @@ android {
     namespace 'com.workrcs.tinytrails'
     compileSdk 35
 
+    // Bundle the same source assets used by the desktop build into the Android APK.
+    sourceSets {
+        main {
+            assets.srcDirs = ['../../assets']
+        }
+    }
+
     defaultConfig {
         applicationId 'com.workrcs.tinytrails'
         minSdk 24
