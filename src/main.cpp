@@ -812,7 +812,8 @@ void DrawImpactEffect() {
 }
 
 void DrawDamageFeedback() {
-    if (damageNoticeTimer <= 0.0f) return;
+    if (damageNoticeTimer <= 0.0f ||
+        (screen != Screen::Playing && screen != Screen::Paused)) return;
     const float fade = std::clamp(damageNoticeTimer / 0.24f, 0.0f, 1.0f);
     const unsigned char alpha = static_cast<unsigned char>(250.0f * fade);
     const float edge = std::clamp(damageNoticeTimer / 0.48f, 0.0f, 1.0f);
@@ -936,7 +937,7 @@ void DrawTitle() {
     DrawRectangleRounded({ 328, 326, 95, 18 }, 0.24f, 7,
                          Color{ 59, 114, 102, 255 });
     DrawRectangleRounded({ 328, 326, 95, 6 }, 0.25f, 7, C_MINT);
-    DrawMenuHero(201.0f, 278.0f);
+    DrawMenuHero(201.0f, 295.0f);
     DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
     DrawCircleV({ 353, 297 }, 8, C_GOLD);
     DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
