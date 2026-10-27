@@ -810,62 +810,6 @@ void DrawEnemy(const Enemy& e) {
 
 void DrawPlayerFallback() {
     const float x = player.pos.x - cameraX;
-    const float run = player.grounded && std::fabs(player.vel.x) > 1.0f
-                      ? std::sin(gameClock * 15.0f) : 0.0f;
-    const float y = player.pos.y + (run != 0.0f ? std::fabs(run) * 1.5f : 0.0f);
-    const bool damaged = hurtFlash > 0.0f || respawnTimer > 0.0f;
-    const float facing = player.vel.x < -1.0f ? -1.0f : 1.0f;
-
-    DrawEllipse(static_cast<int>(x + PLAYER_W * 0.5f),
-                static_cast<int>(player.pos.y + PLAYER_H + 2.0f),
-                23.0f, 6.0f, Color{ 8, 15, 27, 135 });
-
-    // Back accent and limbs establish a readable silhouette at native 960x540 size.
-    DrawRectangleRounded({ x + 4.0f, y + 22.0f, 28.0f, 22.0f }, 0.28f, 8,
-                         Color{ 20, 65, 91, 255 });
-    DrawRectangleRounded({ x + 7.0f, y + 26.0f, 8.0f, 17.0f + run * 2.0f },
-                         0.3f, 5, Color{ 52, 105, 136, 255 });
-    DrawRectangleRounded({ x + 21.0f, y + 26.0f, 8.0f, 17.0f - run * 2.0f },
-                         0.3f, 5, Color{ 52, 105, 136, 255 });
-    DrawRectangleRounded({ x + 2.0f, y + 23.0f, 32.0f, 22.0f },
-                         0.28f, 8, damaged ? C_CORAL : C_MINT);
-    DrawRectangleRoundedLinesEx({ x + 2.0f, y + 23.0f, 32.0f, 22.0f },
-                                0.28f, 8, 2.0f, Color{ 18, 47, 69, 255 });
-    DrawRectangleRounded({ x + 4.0f, y + 29.0f, 28.0f, 5.0f },
-                         0.4f, 6, damaged ? Color{ 255, 235, 230, 255 }
-                                           : Color{ 255, 211, 92, 255 });
-
-    // Head, hair/hood, cheeks, eyes and pupils are deliberately high-contrast.
-    DrawCircleV({ x + 18.0f, y + 15.0f }, 14.0f,
-                damaged ? Color{ 255, 197, 192, 255 } : Color{ 226, 255, 241, 255 });
-    DrawCircleLines(static_cast<int>(x + 18.0f), static_cast<int>(y + 15.0f),
-                    14.0f, Color{ 18, 47, 69, 255 });
-    DrawCircleV({ x + 18.0f, y + 7.0f }, 11.5f,
-                damaged ? Color{ 133, 38, 64, 255 } : Color{ 39, 94, 123, 255 });
-    DrawRectangleRounded({ x + 6.0f, y + 8.0f, 24.0f, 8.0f }, 0.35f, 6,
-                         damaged ? Color{ 255, 166, 164, 255 }
-                                 : Color{ 74, 151, 171, 255 });
-    const float eyeShift = facing * 1.5f;
-    DrawCircleV({ x + 12.0f + eyeShift, y + 16.0f }, 4.0f, WHITE);
-    DrawCircleV({ x + 23.0f + eyeShift, y + 16.0f }, 4.0f, WHITE);
-    DrawCircleV({ x + 12.0f + eyeShift, y + 16.0f }, 2.0f, C_INK);
-    DrawCircleV({ x + 23.0f + eyeShift, y + 16.0f }, 2.0f, C_INK);
-    DrawCircleV({ x + 6.0f, y + 24.0f }, 2.0f, Color{ 255, 125, 141, 230 });
-    DrawCircleV({ x + 30.0f, y + 24.0f }, 2.0f, Color{ 255, 125, 141, 230 });
-
-    if (damaged) {
-        DrawCircleLines(static_cast<int>(x + PLAYER_W * 0.5f),
-                        static_cast<int>(y + PLAYER_H * 0.5f),
-                        31.0f + std::sin(gameClock * 45.0f) * 2.0f,
-                        Color{ 255, 99, 116, 245 });
-        DrawText("HIT", static_cast<int>(x + 2.0f), static_cast<int>(y - 19.0f),
-                 14, Color{ 255, 225, 224, 255 });
-    }
-}
-
-
-void DrawPlayerFallback() {
-    const float x = player.pos.x - cameraX;
     const bool damaged = hurtFlash > 0.0f || respawnTimer > 0.0f;
     const Color body = damaged ? C_CORAL : C_MINT;
     DrawEllipse(static_cast<int>(x + PLAYER_W * 0.5f),
