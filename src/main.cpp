@@ -1094,48 +1094,30 @@ void DrawGame() {
 }
 
 void DrawMenuHero(float x, float y) {
-    const float bob = std::sin(gameClock * 2.8f) * 4.0f;
-    y += bob;
-    DrawCircle(static_cast<int>(x + 18.0f), static_cast<int>(y + 28.0f),
-               46.0f, Color{ 91, 245, 190, 19 });
-    DrawCircleLines(static_cast<int>(x + 18.0f), static_cast<int>(y + 28.0f),
-                    39.0f + std::sin(gameClock * 2.0f) * 2.0f,
-                    Color{ 117, 255, 204, 80 });
+    const float bob = std::sin(gameClock * 2.8f) * 3.0f;
+    DrawCircle(static_cast<int>(x), static_cast<int>(y + 32.0f),
+               48.0f, Color{ 91, 245, 190, 20 });
+    DrawCircleLines(static_cast<int>(x), static_cast<int>(y + 32.0f),
+                    40.0f + std::sin(gameClock * 2.0f) * 2.0f,
+                    Color{ 117, 255, 204, 85 });
 
-    // Floating collectible, trail, and a large preview character.
-    DrawCircleV({ x - 42.0f, y + 1.0f + std::sin(gameClock * 3.0f) * 4.0f },
-                14.0f, Color{ 255, 204, 77, 35 });
-    DrawCircleV({ x - 42.0f, y + 1.0f + std::sin(gameClock * 3.0f) * 4.0f },
-                8.0f, C_GOLD);
-    DrawCircleLines(static_cast<int>(x - 42.0f),
-                    static_cast<int>(y + 1.0f + std::sin(gameClock * 3.0f) * 4.0f),
+    if (characterAtlas.id != 0) {
+        const int idleFrame = static_cast<int>(gameClock * 3.0f) % 5;
+        const Rectangle source = { static_cast<float>(idleFrame * 96), 0.0f, 96.0f, 120.0f };
+        const Rectangle dest = { x - 40.0f, y - 15.0f + bob, 80.0f, 95.0f };
+        DrawTexturePro(characterAtlas, source, dest, { 0.0f, 0.0f }, 0.0f, WHITE);
+    } else {
+        DrawCircleV({ x, y + 28.0f + bob }, 18.0f, C_MINT);
+        DrawCircleV({ x - 5.0f, y + 27.0f + bob }, 3.0f, WHITE);
+        DrawCircleV({ x + 5.0f, y + 27.0f + bob }, 3.0f, WHITE);
+    }
+
+    const float coinY = y + 6.0f + std::sin(gameClock * 3.0f) * 4.0f;
+    DrawCircleV({ x + 75.0f, coinY }, 14.0f, Color{ 255, 207, 80, 35 });
+    DrawCircleV({ x + 75.0f, coinY }, 8.0f, C_GOLD);
+    DrawCircleLines(static_cast<int>(x + 75.0f), static_cast<int>(coinY),
                     8.0f, Color{ 255, 249, 198, 255 });
-
-    DrawEllipse(static_cast<int>(x + 18.0f), static_cast<int>(y + 76.0f),
-                32.0f, 7.0f, Color{ 4, 15, 28, 125 });
-    DrawRectangleRounded({ x + 3.0f, y + 45.0f, 30.0f, 30.0f },
-                         0.26f, 8, Color{ 24, 68, 91, 255 });
-    DrawRectangleRounded({ x + 1.0f, y + 38.0f, 34.0f, 32.0f },
-                         0.24f, 8, C_MINT);
-    DrawRectangleRoundedLinesEx({ x + 1.0f, y + 38.0f, 34.0f, 32.0f },
-                                0.24f, 8, 2.0f, Color{ 16, 46, 68, 255 });
-    DrawRectangleRounded({ x + 3.0f, y + 49.0f, 30.0f, 6.0f },
-                         0.35f, 6, C_GOLD);
-    DrawCircleV({ x + 18.0f, y + 28.0f }, 19.0f,
-                Color{ 226, 255, 241, 255 });
-    DrawCircleLines(static_cast<int>(x + 18.0f), static_cast<int>(y + 28.0f),
-                    19.0f, Color{ 16, 46, 68, 255 });
-    DrawCircleV({ x + 18.0f, y + 17.0f }, 15.0f, Color{ 39, 94, 123, 255 });
-    DrawRectangleRounded({ x + 2.0f, y + 19.0f, 32.0f, 10.0f },
-                         0.3f, 6, Color{ 74, 151, 171, 255 });
-    DrawCircleV({ x + 12.0f, y + 29.0f }, 4.5f, WHITE);
-    DrawCircleV({ x + 24.0f, y + 29.0f }, 4.5f, WHITE);
-    DrawCircleV({ x + 13.0f, y + 29.0f }, 2.2f, C_INK);
-    DrawCircleV({ x + 25.0f, y + 29.0f }, 2.2f, C_INK);
-    DrawCircleV({ x + 4.0f, y + 39.0f }, 2.0f, C_CORAL);
-    DrawCircleV({ x + 32.0f, y + 39.0f }, 2.0f, C_CORAL);
 }
-
 void DrawTitle() {
     DrawBackground(0.0f);
     DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
