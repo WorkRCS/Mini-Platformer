@@ -575,21 +575,7 @@ void LoadLevel(int which) {
     if (levelIndex < 3) buildRoute(2820.0f, 450.0f);
     else buildRoute(300.0f, 470.0f);
 
-    // Level identity affects visible scenery and hazard art as well as geometry.
-    // Extra challenge items are always drawn and match their collision rectangles.
-    if (levelIndex >= 3) {
-        const int extraCount = (levelIndex - 2) / 2;
-        for (int n = 0; n < extraCount; ++n) {
-            const float x = 470.0f + static_cast<float>(n) * 620.0f +
-                            static_cast<float>(levelIndex % 3) * 54.0f;
-            if (x < WORLD_W - 500.0f) {
-                Spike sp;
-                sp.box = { x, 444.0f, 48.0f, 26.0f };
-                sp.type = (levelIndex + n + 1) % 4;
-                spikes.push_back(sp);
-            }
-        }
-    }
+    // All hazards are placed directly on a rendered platform surface; no invisible hitboxes.
 
     player.pos = { 70.0f, 422.0f };
     player.vel = { 0.0f, 0.0f };
