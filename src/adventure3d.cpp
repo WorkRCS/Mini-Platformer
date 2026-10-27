@@ -727,8 +727,13 @@ void UpdatePlayer(float dt) {
     player.position.x = ClampF(player.position.x, WORLD_MIN_X, WORLD_MAX_X);
     player.position.z = ClampF(player.position.z, -WORLD_HALF_Z+2.0f, WORLD_HALF_Z-2.0f);
 
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
     const Rectangle jumpButton = ButtonRect(sw-106*uiScale, sh-205*uiScale, 54*uiScale, 42*uiScale);
-    if ((IsKeyPressed(KEY_SPACE) || Pressed(jumpButton)) && player.grounded) {
+    const bool jumpPressed = IsKeyPressed(KEY_SPACE) || Pressed(jumpButton);
+#else
+    const bool jumpPressed = IsKeyPressed(KEY_SPACE);
+#endif
+    if (jumpPressed && player.grounded) {
         player.velocity.y = 8.3f;
         player.grounded = false;
         SpawnBurst(V3(player.position.x, 0.15f, player.position.z), C_GOLD, 8, 1.8f);
@@ -743,8 +748,14 @@ void UpdatePlayer(float dt) {
         player.grounded = true;
     }
 
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
     if (IsKeyPressed(KEY_J) || Pressed(ButtonRect(sw-104*uiScale, sh-104*uiScale, 90*uiScale, 90*uiScale))) PlayerAttack();
     if (IsKeyPressed(KEY_K) || Pressed(ButtonRect(sw-220*uiScale, sh-154*uiScale, 80*uiScale, 80*uiScale))) PlayerAbility();
+#else
+    // Desktop-native controls: attack with left mouse/J, special ability with right mouse/K.
+    if (IsKeyPressed(KEY_J) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) PlayerAttack();
+    if (IsKeyPressed(KEY_K) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) PlayerAbility();
+#endif
 
     // Camera smoothing creates a stable third-person chase camera on desktop and Android.
     const Vector3 desiredPos = V3(player.position.x-player.facing.x*2.0f, 7.2f+player.position.y, player.position.z+10.5f-player.facing.z*1.5f);
@@ -867,6 +878,7 @@ void DrawHud() {
             DrawBar((sw-bw)/2,sh*0.12f+22*scale,bw,15*scale,bosses[i].health/bosses[i].maxHealth,BossColor(i));
         }
     }
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
     const float joyX = 16*scale, joyY = sh-164*scale;
     DrawCircle(static_cast<int>(joyX+78*scale),static_cast<int>(joyY+74*scale),68*scale,WithAlpha(Color{ 11,20,36,255 },130));
     DrawCircleLines(static_cast<int>(joyX+78*scale),static_cast<int>(joyY+74*scale),68*scale,WithAlpha(C_MINT,145));
@@ -893,6 +905,12 @@ void DrawHud() {
     DrawRectangleRounded(jump,0.25f,8,WithAlpha(C_CYAN,155));
     DrawText("JUMP",static_cast<int>(jump.x+9*scale),static_cast<int>(jump.y+13*scale),static_cast<int>(10*scale),C_INK);
 
+#else
+    const char* desktopControls = "WASD / ARROWS: MOVE    SPACE: JUMP    LEFT CLICK / J: ATTACK    RIGHT CLICK / K: BLINK";
+    DrawRectangleRounded({16*scale,sh-62*scale,sw-32*scale,22*scale},0.2f,6,WithAlpha(C_INK,175));
+    DrawText(desktopControls,static_cast<int>(25*scale),static_cast<int>(sh-56*scale),
+             static_cast<int>(11*scale),Color{210,224,240,255});
+#endif
     DrawRectangleRounded({sw*0.36f,sh-40*scale,sw*0.28f,25*scale},0.2f,6,WithAlpha(C_INK,160));
     DrawText(TextFormat("MONSTERS %i   BOSSES %i/%i   TAB: PAUSE",player.kills,player.defeatedBosses,BOSS_COUNT),
              static_cast<int>(sw*0.36f+10*scale),static_cast<int>(sh-34*scale),static_cast<int>(11*scale),WHITE);
@@ -918,8 +936,13 @@ void DrawMenu() {
     DrawRectangleRounded(start,0.18f,8,WithAlpha(C_MINT,220));
     DrawText("START HUNT",static_cast<int>(start.x+26*scale),static_cast<int>(start.y+13*scale),
              static_cast<int>(20*scale),C_INK);
-    DrawText("WASD / ARROWS: MOVE   SPACE: JUMP   J: ATTACK   K: SPECIAL",
+    #if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+    DrawText("TOUCH PAD: MOVE   JUMP   ATTACK   BLINK",
              static_cast<int>(sw*0.135f),static_cast<int>(sh*0.75f),static_cast<int>(12*scale),Color{210,224,240,255});
+#else
+    DrawText("WASD / ARROWS: MOVE   SPACE: JUMP   LEFT CLICK / J: ATTACK   RIGHT CLICK / K: BLINK",
+             static_cast<int>(sw*0.135f),static_cast<int>(sh*0.75f),static_cast<int>(12*scale),Color{210,224,240,255});
+#endif
     DrawText("Offline prototype | Procedural fallback art | No server required",
              static_cast<int>(sw*0.135f),static_cast<int>(sh*0.80f),static_cast<int>(11*scale),Color{158,177,202,255});
 }
@@ -946,8 +969,13 @@ void ResetGame() {
 } // namespace
 
 int main() {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(DESIGN_W, DESIGN_H, "Wildbound: Boss Hunter");
+#else
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
+    InitWindow(1280, 720, "Wildbound: Boss Hunter");
+#endif
     SetTargetFPS(60);
     InitAudio();
     MakeWorld();
