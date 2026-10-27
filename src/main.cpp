@@ -68,6 +68,14 @@ std::vector<Coin> coins;
 std::vector<Enemy> enemies;
 std::vector<Particle> particles;
 
+Sound sfxJump {};
+Sound sfxCoin {};
+Sound sfxHurt {};
+Sound sfxStomp {};
+Sound sfxLevel {};
+Sound sfxMenu {};
+bool audioReady = false;
+
 Player player;
 int levelIndex = 0;
 int difficulty = 0; // 0 Easy, 1 Normal, 2 Hard
@@ -76,6 +84,10 @@ int highScore = 0;
 float cameraX = 0.0f;
 float gameClock = 0.0f;
 float hurtFlash = 0.0f;
+float damageNoticeTimer = 0.0f;
+float respawnTimer = 0.0f;
+float screenShakeTimer = 0.0f;
+bool pendingGameOver = false;
 bool exitRequested = false;
 
 const char* DifficultyName() {
@@ -148,6 +160,65 @@ bool Button(Rectangle r, const char* label, bool active = true) {
 
 void TextCentered(const char* text, int y, int size, Color color) {
     DrawText(text, (VIEW_W - MeasureText(text, size)) / 2, y, size, color);
+}
+
+Sound MakeTone(float frequency, float duration, float volume, bool noisy = false) {
+    constexpr unsigned int sampleRate = 22050;
+    const unsigned int frames = static_cast<unsigned int>(sampleRate * duration);
+    short* samples = static_cast<short*>(MemAlloc(frames * sizeof(short)));
+    if (samples == nullptr) return Sound{};
+
+    for (unsigned int i = 0; i < frames; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(sampleRate);
+        const float progress = t / duration;
+        const float envelope = std::min(1.0f, t / 0.012f) *
+                               std::max(0.0f, (duration - t) / 0.035f);
+        const float phase = 2.0f * PI * frequency * t *
+                            (1.0f - 0.16f * progress);
+        float value = std::sin(phase);
+        if (noisy) {
+            unsigned int seed = i * 1103515245u + 12345u;
+            const float noise = (static_cast<float>((seed >> 16) & 0x7fff) / 16383.5f) - 1.0f;
+            value = value * 0.72f + noise * 0.28f;
+        }
+        const float sample = std::clamp(value * envelope * volume, -1.0f, 1.0f);
+        samples[i] = static_cast<short>(sample * 32767.0f);
+    }
+
+    Wave wave = { frames, sampleRate, 16, 1, samples };
+    Sound sound = LoadSoundFromWave(wave);
+    UnloadWave(wave);
+    return sound;
+}
+
+void PlayFx(Sound sound) {
+    if (audioReady && sound.frameCount > 0) PlaySound(sound);
+}
+
+void InitGameAudio() {
+    InitAudioDevice();
+    audioReady = IsAudioDeviceReady();
+    if (!audioReady) return;
+
+    SetMasterVolume(0.78f);
+    sfxJump = MakeTone(540.0f, 0.12f, 0.40f);
+    sfxCoin = MakeTone(980.0f, 0.14f, 0.32f);
+    sfxHurt = MakeTone(150.0f, 0.30f, 0.52f, true);
+    sfxStomp = MakeTone(250.0f, 0.10f, 0.35f);
+    sfxLevel = MakeTone(680.0f, 0.24f, 0.28f);
+    sfxMenu = MakeTone(420.0f, 0.07f, 0.20f);
+}
+
+void CloseGameAudio() {
+    if (!audioReady) return;
+    UnloadSound(sfxJump);
+    UnloadSound(sfxCoin);
+    UnloadSound(sfxHurt);
+    UnloadSound(sfxStomp);
+    UnloadSound(sfxLevel);
+    UnloadSound(sfxMenu);
+    CloseAudioDevice();
+    audioReady = false;
 }
 
 void SpawnParticles(Vector2 pos, Color color, int amount = 16) {
@@ -246,11 +317,16 @@ void LoadLevel(int which) {
     player.grounded = false;
     cameraX = 0.0f;
     hurtFlash = 0.0f;
+    damageNoticeTimer = 0.0f;
+    respawnTimer = 0.0f;
+    screenShakeTimer = 0.0f;
+    pendingGameOver = false;
 }
 
 void StartGame() {
     score = 0;
     player.lives = StartingLives();
+    PlayFx(sfxMenu);
     LoadLevel(0);
     screen = Screen::Playing;
 }
@@ -260,16 +336,24 @@ Rectangle PlayerRect() {
 }
 
 void TakeHit() {
-    if (hurtFlash > 0.0f) return;
+    if (hurtFlash > 0.0f || respawnTimer > 0.0f) return;
+
     --player.lives;
-    hurtFlash = 1.1f;
-    SpawnParticles({ player.pos.x + PLAYER_W * 0.5f,
-                     player.pos.y + PLAYER_H * 0.5f }, C_CORAL, 22);
-    player.pos = { 70.0f, 432.0f };
-    player.vel = { 0.0f, 0.0f };
+    hurtFlash = 1.35f;
+    damageNoticeTimer = 1.15f;
+    respawnTimer = 0.42f;
+    screenShakeTimer = 0.24f;
+    pendingGameOver = player.lives <= 0;
+
+    const Vector2 impact = { player.pos.x + PLAYER_W * 0.5f,
+                             player.pos.y + PLAYER_H * 0.5f };
+    SpawnParticles(impact, C_CORAL, 28);
+    PlayFx(sfxHurt);
+
+    // Kick the player away from the hazard before respawning, so damage is visible.
+    player.vel.x = player.vel.x >= 0.0f ? -150.0f : 150.0f;
+    player.vel.y = -235.0f;
     player.grounded = false;
-    cameraX = 0.0f;
-    if (player.lives <= 0) screen = Screen::GameOver;
 }
 
 void UpdateParticles(float dt) {
@@ -286,7 +370,29 @@ void UpdateParticles(float dt) {
 void UpdateGame(float dt) {
     gameClock += dt;
     hurtFlash = std::max(0.0f, hurtFlash - dt);
+    damageNoticeTimer = std::max(0.0f, damageNoticeTimer - dt);
+    screenShakeTimer = std::max(0.0f, screenShakeTimer - dt);
     UpdateParticles(dt);
+
+    if (respawnTimer > 0.0f) {
+        respawnTimer = std::max(0.0f, respawnTimer - dt);
+        player.pos.x += player.vel.x * dt;
+        player.pos.y += player.vel.y * dt;
+        player.vel.y += GRAVITY * dt;
+
+        if (respawnTimer <= 0.0f) {
+            if (pendingGameOver) {
+                pendingGameOver = false;
+                screen = Screen::GameOver;
+            } else {
+                player.pos = { 70.0f, 432.0f };
+                player.vel = { 0.0f, 0.0f };
+                player.grounded = false;
+                cameraX = 0.0f;
+            }
+        }
+        return;
+    }
 
     float move = 0.0f;
     if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) move += 1.0f;
@@ -336,6 +442,7 @@ void UpdateGame(float dt) {
     if (jumpPressed && player.grounded) {
         player.vel.y = -JUMP_SPEED;
         player.grounded = false;
+        PlayFx(sfxJump);
     }
 
     const float oldBottom = player.pos.y + PLAYER_H;
@@ -364,14 +471,15 @@ void UpdateGame(float dt) {
             coin.taken = true;
             score += 10;
             highScore = std::max(highScore, score);
-            SpawnParticles(coin.center, C_GOLD, 10);
+            SpawnParticles(coin.center, C_GOLD, 14);
+            PlayFx(sfxCoin);
         }
     }
 
     for (const auto& s : spikes) {
         if (CheckCollisionRecs(PlayerRect(), s.box)) {
             TakeHit();
-            break;
+            return;
         }
     }
 
@@ -389,26 +497,32 @@ void UpdateGame(float dt) {
             if (player.vel.y > 20.0f && oldBottom <= e.box.y + 14.0f) {
                 e.alive = false;
                 player.vel.y = -JUMP_SPEED * 0.58f;
-                SpawnParticles({ e.box.x + 15.0f, e.box.y + 10.0f }, C_CORAL, 15);
+                SpawnParticles({ e.box.x + 15.0f, e.box.y + 10.0f }, C_CORAL, 18);
                 score += 25;
                 highScore = std::max(highScore, score);
+                PlayFx(sfxStomp);
             } else {
                 TakeHit();
-                break;
+                return;
             }
         }
     }
 
-    if (player.pos.y > VIEW_H + 110.0f && screen == Screen::Playing) TakeHit();
+    if (player.pos.y > VIEW_H + 110.0f && screen == Screen::Playing) {
+        TakeHit();
+        return;
+    }
 
     const float targetCamera = std::clamp(player.pos.x - VIEW_W * 0.36f,
                                            0.0f, WORLD_W - VIEW_W);
     cameraX += (targetCamera - cameraX) * std::min(1.0f, dt * 5.0f);
 
     if (screen == Screen::Playing && player.pos.x > WORLD_W - 135.0f) {
-        SpawnParticles({ WORLD_W - 100.0f, 385.0f }, C_MINT, 26);
+        SpawnParticles({ WORLD_W - 100.0f, 385.0f }, C_MINT, 30);
+        PlayFx(sfxLevel);
         if (levelIndex < 2) {
             LoadLevel(levelIndex + 1);
+            PlayFx(sfxLevel);
         } else {
             screen = Screen::Victory;
         }
@@ -494,10 +608,10 @@ void DrawSpike(const Spike& spike) {
                      { x1 + sw * 0.5f, spike.box.y },
                      { x1 + sw, spike.box.y + spike.box.height },
                      Color{ 255, 106, 119, 255 });
-        DrawTriangle({ x1 + sw * 0.5f, spike.box.y + 3.0f },
-                     { x1 + sw * 0.5f, spike.box.y + 3.0f },
-                     { x1 + sw * 0.82f, spike.box.y + spike.box.height - 1.0f },
-                     Color{ 255, 175, 171, 255 });
+        DrawTriangle({ x1 + sw * 0.22f, spike.box.y + spike.box.height - 2.0f },
+                     { x1 + sw * 0.48f, spike.box.y + 4.0f },
+                     { x1 + sw * 0.58f, spike.box.y + spike.box.height - 2.0f },
+                     Color{ 255, 190, 184, 255 });
     }
 }
 
@@ -559,6 +673,7 @@ void DrawParticles() {
 }
 
 void DrawTouchControls() {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID) || defined(PLATFORM_WEB)
     const Rectangle left  = { 34, 421, 68, 74 };
     const Rectangle right = { 112, 421, 68, 74 };
     const Rectangle jump  = { 848, 410, 78, 82 };
@@ -578,6 +693,28 @@ void DrawTouchControls() {
                  { right.x + 25, right.y + 49 }, C_WHITE_90);
     DrawText("JUMP", static_cast<int>(jump.x + 15), static_cast<int>(jump.y + 31),
              16, C_WHITE_90);
+#endif
+}
+
+void DrawHeart(float x, float y, Color c) {
+    DrawCircleV({ x - 4.0f, y }, 5.0f, c);
+    DrawCircleV({ x + 4.0f, y }, 5.0f, c);
+    DrawTriangle({ x - 9.0f, y + 2.0f }, { x + 9.0f, y + 2.0f },
+                 { x, y + 12.0f }, c);
+}
+
+void DrawDamageFeedback() {
+    if (damageNoticeTimer <= 0.0f) return;
+    const float fade = std::clamp(damageNoticeTimer / 0.28f, 0.0f, 1.0f);
+    const unsigned char alpha = static_cast<unsigned char>(235.0f * fade);
+    DrawRectangleRounded({ 334, 86, 292, 66 }, 0.20f, 10,
+                         Color{ 66, 22, 44, static_cast<unsigned char>(210.0f * fade) });
+    DrawRectangleRoundedLinesEx({ 334, 86, 292, 66 }, 0.20f, 10, 2.0f,
+                                Color{ 255, 128, 142, alpha });
+    const char* message = pendingGameOver ? "FINAL HIT!" : "OUCH!  -1 LIFE";
+    DrawText(message, 354, 98, 24, Color{ 255, 151, 160, alpha });
+    DrawText(pendingGameOver ? "GAME OVER" : "RESPAWNING...",
+             355, 126, 12, C_WHITE_90);
 }
 
 void DrawHud() {
@@ -585,8 +722,11 @@ void DrawHud() {
     DrawText(TextFormat("LEVEL %d / 3", levelIndex + 1), 30, 24, 14,
              Color{ 159, 190, 220, 255 });
     DrawText(TextFormat("SCORE %04d", score), 30, 43, 19, C_GOLD);
-    DrawText(TextFormat("LIVES %d", player.lives), 192, 43, 17,
-             player.lives <= 2 ? C_CORAL : C_MINT);
+    DrawText("LIVES", 193, 25, 10, Color{ 159, 190, 220, 255 });
+    for (int i = 0; i < StartingLives(); ++i) {
+        const Color heart = i < player.lives ? C_CORAL : Color{ 75, 82, 103, 255 };
+        DrawHeart(204.0f + i * 17.0f, 50.0f, heart);
+    }
 
     DrawRectangleRounded({ 768, 17, 174, 42 }, 0.20f, 7, Color{ 13, 26, 45, 205 });
     DrawText(DifficultyName(), 785, 29, 15, C_WHITE_90);
@@ -601,10 +741,11 @@ void DrawGame() {
     for (const auto& c : coins) DrawCoin(c);
     for (const auto& e : enemies) DrawEnemy(e);
     DrawGoal();
-    DrawParticles();
     DrawPlayer();
+    DrawParticles();
     DrawHud();
     DrawTouchControls();
+    DrawDamageFeedback();
 }
 
 void DrawTitle() {
@@ -631,7 +772,7 @@ void DrawTitle() {
              Color{ 182, 204, 224, 255 });
     TextCentered("Collect coins  -  avoid spikes  -  reach the flag", 434, 14,
                  Color{ 166, 191, 214, 255 });
-    TextCentered("3 short levels • no extra assets needed", 458, 13,
+    TextCentered("3 SHORT LEVELS  -  NO EXTRA ASSETS", 458, 13,
                  Color{ 129, 157, 183, 255 });
 }
 
@@ -681,7 +822,7 @@ void DrawGameOverScreen() {
 }
 
 void DrawVictoryScreen() {
-    DrawOverlay("YOU DID IT!", TextFormat("Trail complete  •  Score %d", score));
+    DrawOverlay("YOU DID IT!", TextFormat("Trail complete  |  Score %d", score));
     if (Button({ 350, 270, 260, 43 }, "PLAY AGAIN")) StartGame();
     if (Button({ 350, 326, 260, 40 }, "MAIN MENU")) screen = Screen::Menu;
 }
@@ -696,8 +837,11 @@ int main() {
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(VIEW_W, VIEW_H, "Tiny Trails - Mini Platformer");
     SetTargetFPS(60);
+    SetWindowMinSize(800, 450);
+    InitGameAudio();
     canvas = LoadRenderTexture(VIEW_W, VIEW_H);
-    SetTextureFilter(canvas.texture, TEXTURE_FILTER_BILINEAR);
+    // The UI is text-heavy, so nearest sampling keeps small labels and icons crisp.
+    SetTextureFilter(canvas.texture, TEXTURE_FILTER_POINT);
 
     while (!WindowShouldClose() && !exitRequested) {
         const float dt = std::min(GetFrameTime(), 0.033f);
@@ -734,13 +878,17 @@ int main() {
         ClearBackground(Color{ 6, 12, 25, 255 });
         const Rectangle source = { 0.0f, 0.0f, static_cast<float>(canvas.texture.width),
                                    -static_cast<float>(canvas.texture.height) };
-        const Rectangle dest = { viewOffsetX, viewOffsetY,
+        const float shake = screenShakeTimer > 0.0f ? screenShakeTimer * 8.0f : 0.0f;
+        const float shakeX = shake > 0.0f ? std::sin(gameClock * 91.0f) * shake : 0.0f;
+        const float shakeY = shake > 0.0f ? std::cos(gameClock * 107.0f) * shake : 0.0f;
+        const Rectangle dest = { viewOffsetX + shakeX, viewOffsetY + shakeY,
                                  VIEW_W * viewScale, VIEW_H * viewScale };
         DrawTexturePro(canvas.texture, source, dest, { 0, 0 }, 0.0f, WHITE);
         EndDrawing();
     }
 
     UnloadRenderTexture(canvas);
+    CloseGameAudio();
     CloseWindow();
     return 0;
 }
