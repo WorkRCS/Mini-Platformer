@@ -562,6 +562,11 @@ const char* AppIconPath() {
 }
 
 void LoadGameAssets() {
+    if (const char* iconPath = AppIconPath()) {
+        appIconTexture = LoadTexture(iconPath);
+        if (appIconTexture.id != 0) SetTextureFilter(appIconTexture, TEXTURE_FILTER_BILINEAR);
+        else TraceLog(LOG_WARNING, "ASSET: App icon PNG failed to load; using text branding");
+    }
     backgroundFrames = LoadImageAnim(BackgroundAssetPath(), &backgroundFrameCount);
     if (backgroundFrames.data != nullptr && backgroundFrameCount > 0) {
         const Image firstFrame = {
@@ -622,6 +627,7 @@ void UpdateBackgroundAnimation(float dt) {
 }
 
 void UnloadGameAssets() {
+    if(appIconTexture.id!=0) UnloadTexture(appIconTexture);
     if(backgroundTexture.id!=0) UnloadTexture(backgroundTexture);
     if(characterTexture.id!=0) UnloadTexture(characterTexture);
     if(cactusTexture.id!=0) UnloadTexture(cactusTexture);
@@ -1303,6 +1309,52 @@ void DrawPlatform(const Platform& p) {
         DrawLineEx({r.x+r.width-12,cy},{r.x+r.width-23,cy},2,Color{255,244,190,255});
     }
 }
+void DrawLevelDecorations() {
+    static const Color grass[LEVEL_COUNT] = {
+        {91,218,128,255},{82,204,155,255},{190,159,104,255},{101,228,132,255},
+        {134,207,255,255},{221,173,87,255},{155,225,255,255},{255,114,70,255},
+        {187,153,255,255},{177,239,169,255}
+    };
+    for (const auto& p : platforms) {
+        if (p.moving) continue;
+        const float left = p.box.x - cameraX;
+        const float top = p.box.y;
+        if (left > VIEW_W || left + p.box.width < 0.0f) continue;
+        const int count = std::min(5, static_cast<int>(p.box.width / 105.0f));
+        for (int i=0; i<count; ++i) {
+            const float x = left + 35.0f + i * (p.box.width / std::max(1,count));
+            if (x < 0.0f || x > VIEW_W) continue;
+            if (levelIndex==4 || levelIndex==6 || levelIndex==8) {
+                DrawTriangle({x-5,top},{x,top-10.0f-(i%2)*3.0f},{x+5,top},
+                             Color{grass[levelIndex].r,grass[levelIndex].g,grass[levelIndex].b,210});
+                DrawLineEx({x,top-7.0f},{x,top-1.0f},1.2f,Color{238,250,255,230});
+            } else if (levelIndex==7) {
+                DrawCircleV({x,top-3.0f},2.3f,Color{255,135,69,230});
+                DrawCircleV({x+4,top-7.0f},1.4f,Color{255,210,104,220});
+            } else {
+                DrawLineEx({x,top-1.0f},{x-3.0f,top-8.0f},2.0f,grass[levelIndex]);
+                DrawLineEx({x+1.0f,top-1.0f},{x+5.0f,top-10.0f},2.0f,grass[levelIndex]);
+                DrawLineEx({x+2.0f,top-1.0f},{x+9.0f,top-5.0f},1.5f,grass[levelIndex]);
+            }
+        }
+    }
+}
+
+void DrawBirdFlock() {
+    const Color skyBird = levelIndex==7 ? Color{255,198,149,230}
+                      : (levelIndex==4 || levelIndex==6 ? Color{222,242,255,230}
+                                                         : Color{22,48,70,215});
+    for (int i=0; i<3; ++i) {
+        float x=std::fmod(gameClock*68.0f+i*178.0f+levelIndex*39.0f,
+                          static_cast<float>(VIEW_W+100))-50.0f;
+        const float y=74.0f+static_cast<float>((i+levelIndex)%4)*24.0f+
+                      std::sin(gameClock*1.8f+i*1.7f)*9.0f;
+        const float wing=std::sin(gameClock*10.0f+i)*4.0f;
+        DrawLineEx({x-8.0f,y+wing},{x,y},1.8f,skyBird);
+        DrawLineEx({x,y},{x+8.0f,y-wing},1.8f,skyBird);
+    }
+}
+
 void DrawCoin(const Coin& coin) {
     if (coin.taken) return;
     const float bob = std::sin(gameClock * 3.4f + coin.phase) * 4.0f;
@@ -1321,6 +1373,8 @@ void DrawSpike(const Spike& spike) {
 
     // Cactus and pillar are fully visible and use the exact same placement as collision.
     if(spike.type==4) {
+        DrawEllipse((int)(x+w*0.5f),(int)(y+h-2.0f),std::max(9.0f,w*0.72f),4.0f,
+                    Color{8,17,27,100});
         if(cactusTexture.id!=0) {
             DrawTexturePro(cactusTexture,{0,0,(float)cactusTexture.width,(float)cactusTexture.height},
                            {x,y,w,h},{0,0},0,WHITE);
@@ -1674,10 +1728,14 @@ void DrawHud() {
 
 void DrawGame() {
     DrawBackground(cameraX);
+    DrawBirdFlock();
     for (const auto& p : platforms) DrawPlatform(p);
+    DrawLevelDecorations();
     for (const auto& s : spikes) DrawSpike(s);
     for (const auto& c : coins) DrawCoin(c);
+    for (const auto& item : powerUps) DrawPowerUp(item);
     for (const auto& e : enemies) DrawEnemy(e);
+    for (const auto& e : flyingEnemies) DrawFlyingEnemy(e);
     DrawGoal();
     DrawPlayer();
     DrawParticles();
@@ -1689,8 +1747,9 @@ void DrawGame() {
     DrawDamageFeedback();
 }
 
-void DrawMenuHero(float x, float y) {
-    const float bob = std::sin(gameClock * 2.4f) * 2.0f;
+void DrawMenuHero(float x, float feetY) {
+    // Keep the menu hero grounded on the same platform asset used in gameplay.
+    const float bob = 0.0f;
     DrawCircle(static_cast<int>(x), static_cast<int>(y + 32.0f),
                48.0f, Color{ 91, 245, 190, 20 });
     DrawCircleLines(static_cast<int>(x), static_cast<int>(y + 32.0f),
@@ -1707,16 +1766,16 @@ void DrawMenuHero(float x, float y) {
             static_cast<float>(characterTexture.width),
             static_cast<float>(characterTexture.height)
         };
-        const Rectangle dest = { x - previewW * 0.5f, y - previewH * 0.5f + bob,
+        const Rectangle dest = { x - previewW * 0.5f, feetY - previewH + bob,
                                  previewW, previewH };
         DrawTexturePro(characterTexture, source, dest, { 0.0f, 0.0f }, 0.0f, WHITE);
     } else {
-        DrawCircleV({ x, y + 28.0f + bob }, 18.0f, C_MINT);
-        DrawCircleV({ x - 5.0f, y + 27.0f + bob }, 3.0f, WHITE);
-        DrawCircleV({ x + 5.0f, y + 27.0f + bob }, 3.0f, WHITE);
+        DrawCircleV({ x, feetY - 18.0f + bob }, 18.0f, C_MINT);
+        DrawCircleV({ x - 5.0f, feetY - 19.0f + bob }, 3.0f, WHITE);
+        DrawCircleV({ x + 5.0f, feetY - 19.0f + bob }, 3.0f, WHITE);
     }
 
-    const float coinY = y + 6.0f + std::sin(gameClock * 3.0f) * 4.0f;
+    const float coinY = feetY - 68.0f + std::sin(gameClock * 3.0f) * 4.0f;
     DrawCircleV({ x + 75.0f, coinY }, 14.0f, Color{ 255, 207, 80, 35 });
     DrawCircleV({ x + 75.0f, coinY }, 8.0f, C_GOLD);
     DrawCircleLines(static_cast<int>(x + 75.0f), static_cast<int>(coinY),
@@ -1741,16 +1800,15 @@ void DrawTitle() {
              Color{ 201, 224, 239, 255 });
 
     // Floating islands make the game identity readable before pressing Play.
-    DrawRectangleRounded({ 84, 365, 220, 21 }, 0.24f, 7,
-                         Color{ 59, 114, 102, 255 });
-    DrawRectangleRounded({ 84, 365, 220, 7 }, 0.25f, 7, C_MINT);
-    DrawRectangleRounded({ 328, 326, 95, 18 }, 0.24f, 7,
-                         Color{ 59, 114, 102, 255 });
-    DrawRectangleRounded({ 328, 326, 95, 6 }, 0.25f, 7, C_MINT);
-    DrawMenuHero(201.0f, 295.0f);
-    DrawCircleV({ 353, 297 }, 14, Color{ 255, 207, 80, 35 });
-    DrawCircleV({ 353, 297 }, 8, C_GOLD);
-    DrawCircleLines(353, 297, 8, Color{ 255, 249, 198, 255 });
+    const float oldMenuCamera = cameraX;
+    cameraX = 0.0f;
+    DrawPlatform(Platform{{84,365,220,21}});
+    DrawPlatform(Platform{{328,326,95,18}});
+    cameraX = oldMenuCamera;
+    DrawMenuHero(201.0f, 365.0f);
+    DrawCircleV({ 353, 278 }, 14, Color{ 255, 207, 80, 35 });
+    DrawCircleV({ 353, 278 }, 8, C_GOLD);
+    DrawCircleLines(353, 278, 8, Color{ 255, 249, 198, 255 });
     DrawUIText("10 LEVELS", 81, 427, 19, C_GOLD);
     DrawUIText("Easy, Medium and Hard difficulty", 81, 454, 15,
              Color{ 177, 203, 223, 255 });
@@ -1795,6 +1853,24 @@ void DrawTitle() {
              Color{ 153, 183, 207, 255 });
 }
 
+void DrawLoadingScreen() {
+    DrawBackground(0.0f);
+    DrawRectangleGradientV(0,0,VIEW_W,VIEW_H,Color{7,17,35,150},Color{7,17,35,225});
+    if(appIconTexture.id!=0) {
+        DrawTexturePro(appIconTexture,{0,0,(float)appIconTexture.width,(float)appIconTexture.height},
+                       {VIEW_W*0.5f-48.0f,105.0f,96.0f,96.0f},{0,0},0,WHITE);
+    } else {
+        TextCentered("TINY TRAILS",131,32,C_MINT);
+    }
+    TextCentered("PREPARING YOUR ADVENTURE",238,22,C_WHITE_90);
+    TextCentered("Loading bundled game assets",271,14,Color{183,210,231,255});
+    const float progress=std::clamp((5.0f-loadingTimer)/5.0f,0.0f,1.0f);
+    DrawRectangleRounded({250,326,460,22},0.5f,10,Color{8,20,39,240});
+    DrawRectangleRounded({254,330,452.0f*progress,14},0.5f,10,Color{87,230,183,255});
+    DrawRectangleRoundedLinesEx({250,326,460,22},0.5f,10,1.4f,Color{181,224,237,220});
+    DrawUIText(TextFormat("%d%%",(int)std::round(progress*100.0f)),VIEW_W/2-18,360,13,C_WHITE_90);
+    TextCentered("Developed by Sadik Laskar",425,18,Color{211,230,242,255});
+}
 void DrawControlsScreen() {
     DrawBackground(0.0f);
     DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
@@ -1815,80 +1891,83 @@ void DrawControlsScreen() {
 
 void DrawSettingsScreen() {
     DrawBackground(0.0f);
-    DrawRectangleGradientV(0, 0, VIEW_W, VIEW_H,
-                           Color{ 8, 16, 38, 205 }, Color{ 10, 25, 43, 225 });
-    DrawRectangleRounded({ 258, 38, 444, 464 }, 0.06f, 12,
-                         Color{ 12, 24, 43, 248 });
-    DrawRectangleRoundedLinesEx({ 258, 38, 444, 464 }, 0.06f, 12, 2.0f,
-                                Color{ 92, 144, 166, 220 });
-    TextCentered("SETTINGS", 53, 29, C_WHITE_90);
-    TextCentered("LOCAL EXPLORE MODE", 88, 13, C_MINT);
+    DrawRectangleGradientV(0,0,VIEW_W,VIEW_H,Color{8,16,38,205},Color{10,25,43,225});
+    DrawRectangleRounded({230,22,500,496},0.06f,12,Color{12,24,43,248});
+    DrawRectangleRoundedLinesEx({230,22,500,496},0.06f,12,2.0f,Color{92,144,166,220});
+    TextCentered("SETTINGS",36,29,C_WHITE_90);
+    DrawUIText("BACKGROUND MUSIC",278,82,15,Color{186,208,226,255});
+    if(Button({520,76,154,36},musicEnabled?"MUSIC: ON":"MUSIC: OFF")) {
+        musicEnabled=!musicEnabled;
+        settingsMessage=musicEnabled?"Background music enabled.":"Background music muted.";
+        PlayFx(sfxMenu);
+        if(!musicEnabled && audioReady && IsSoundPlaying(sfxBackgroundMusic)) StopSound(sfxBackgroundMusic);
+    }
+    DrawUIText("VOLUME",278,124,13,C_WHITE_90);
+    DrawRectangleRounded({330,128,270,14},0.45f,8,Color{5,14,29,255});
+    DrawRectangleRounded({330,128,270*musicVolume,14},0.45f,8,Color{93,230,186,255});
+    DrawCircleV({330+270*musicVolume,135},8,C_WHITE_90);
+    DrawRectangleRoundedLinesEx({330,128,270,14},0.45f,8,1.2f,Color{94,132,156,230});
+    if(Held({320,118,290,34})) {
+        musicVolume=std::clamp((pointer.x-330.0f)/270.0f,0.0f,1.0f);
+        if(audioReady && sfxBackgroundMusic.frameCount>0) SetSoundVolume(sfxBackgroundMusic,musicVolume);
+    }
+    DrawUIText(TextFormat("%d%%",(int)std::round(musicVolume*100.0f)),610,128,13,C_MINT);
+    DrawRectangle(270,166,420,1,Color{77,104,137,150});
 
-    DrawRectangleRounded({ 330, 111, 300, 42 }, 0.14f, 8, Color{ 6, 15, 30, 255 });
-    DrawRectangleRoundedLinesEx({ 330, 111, 300, 42 }, 0.14f, 8, 1.0f,
-                                Color{ 89, 124, 151, 255 });
-    const std::string masked = cheatPinEntry.empty()
-        ? "ENTER 5-DIGIT PIN" : std::string(cheatPinEntry.size(), '*');
-    DrawUIText(masked.c_str(), 349, 124, 17, C_WHITE_90);
+    TextCentered("LOCAL EXPLORE MODE",177,13,C_MINT);
+    DrawRectangleRounded({330,193,300,36},0.14f,8,Color{6,15,30,255});
+    DrawRectangleRoundedLinesEx({330,193,300,36},0.14f,8,1.0f,Color{89,124,151,255});
+    const std::string masked=cheatPinEntry.empty()?"ENTER 5-DIGIT PIN":std::string(cheatPinEntry.size(),'*');
+    DrawUIText(masked.c_str(),349,204,16,C_WHITE_90);
 
-    const int colX[3] = { 365, 425, 485 };
-    const int rowY[3] = { 160, 201, 242 };
-    const char* labels[9] = { "1","2","3","4","5","6","7","8","9" };
-    for (int i = 0; i < 9; ++i) {
-        const int col = i % 3, row = i / 3;
-        if (Button({ static_cast<float>(colX[col]), static_cast<float>(rowY[row]),
-                     52, 35 }, labels[i])) {
-            if (cheatPinEntry.size() < 5) cheatPinEntry.push_back(labels[i][0]);
-            settingsMessage.clear();
-            settingsPinError = false;
+    const int colX[3]={365,425,485};
+    const int rowY[3]={239,271,303};
+    const char* labels[9]={"1","2","3","4","5","6","7","8","9"};
+    for(int i=0;i<9;++i) {
+        const int col=i%3,row=i/3;
+        if(Button({(float)colX[col],(float)rowY[row],52,28},labels[i])) {
+            if(cheatPinEntry.size()<5) cheatPinEntry.push_back(labels[i][0]);
+            settingsMessage.clear(); settingsPinError=false;
         }
     }
-    if (Button({ 348, 283, 78, 35 }, "CLEAR")) {
-        cheatPinEntry.clear();
-        settingsMessage.clear();
-        settingsPinError = false;
+    if(Button({348,335,78,29},"CLEAR")) {
+        cheatPinEntry.clear(); settingsMessage.clear(); settingsPinError=false;
     }
-    if (Button({ 437, 283, 52, 35 }, "0")) {
-        if (cheatPinEntry.size() < 5) cheatPinEntry.push_back('0');
-        settingsMessage.clear();
-        settingsPinError = false;
+    if(Button({437,335,52,29},"0")) {
+        if(cheatPinEntry.size()<5) cheatPinEntry.push_back('0');
+        settingsMessage.clear(); settingsPinError=false;
     }
-    if (Button({ 500, 283, 78, 35 }, "DEL")) {
-        if (!cheatPinEntry.empty()) cheatPinEntry.pop_back();
-        settingsMessage.clear();
-        settingsPinError = false;
+    if(Button({500,335,78,29},"DEL")) {
+        if(!cheatPinEntry.empty()) cheatPinEntry.pop_back();
+        settingsMessage.clear(); settingsPinError=false;
     }
 
-    const Color statusColor = cheatEnabled ? C_MINT
-        : (settingsPinError ? C_CORAL : Color{ 186, 208, 226, 255 });
-    const char* status = cheatEnabled ? "CHEAT ACTIVE - INVINCIBLE"
-                                      : (settingsMessage.empty() ? "CHEAT OFF" : settingsMessage.c_str());
-    TextCentered(status, 329, 12, statusColor);
-
-    if (Button({ 310, 355, 160, 42 }, "UNLOCK")) {
-        if (cheatPinEntry == "74330") {
-            cheatEnabled = true;
-            settingsMessage = "Explore mode enabled for this session.";
-            settingsPinError = false;
+    const Color statusColor=cheatEnabled?C_MINT:(settingsPinError?C_CORAL:Color{186,208,226,255});
+    const char* status=cheatEnabled?"CHEAT ACTIVE - INVINCIBLE":
+        (settingsMessage.empty()?"CHEAT OFF":settingsMessage.c_str());
+    TextCentered(status,373,12,statusColor);
+    if(Button({310,395,160,38},"UNLOCK")) {
+        if(cheatPinEntry=="74330") {
+            cheatEnabled=true;
+            settingsMessage="Explore mode enabled for this session.";
+            settingsPinError=false;
         } else {
-            settingsMessage = "Wrong PIN - try again";
-            settingsPinError = true;
+            settingsMessage="Wrong PIN - try again";
+            settingsPinError=true;
         }
-        cheatPinEntry.clear();
-        PlayFx(sfxMenu);
+        cheatPinEntry.clear(); PlayFx(sfxMenu);
     }
-    if (Button({ 490, 355, 160, 42 }, "DISABLE CHEAT")) {
-        cheatEnabled = false;
-        cheatPinEntry.clear();
-        settingsMessage = "Cheat disabled. Normal rules restored.";
-        settingsPinError = false;
-        PlayFx(sfxMenu);
+    if(Button({490,395,160,38},"DISABLE CHEAT")) {
+        cheatEnabled=false; cheatPinEntry.clear();
+        settingsMessage="Cheat disabled. Normal rules restored.";
+        settingsPinError=false; PlayFx(sfxMenu);
     }
-    if (Button({ 370, 426, 220, 39 }, "BACK")) {
-        screen = settingsFromPause ? Screen::Paused : Screen::Menu;
-        settingsFromPause = false;
+    if(Button({370,453,220,35},"BACK")) {
+        screen=settingsFromPause?Screen::Paused:Screen::Menu;
+        settingsFromPause=false;
     }
 }
+
 
 void DrawOverlay(const char* title, const char* subtitle) {
     DrawGame();
