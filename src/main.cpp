@@ -1226,9 +1226,13 @@ void DrawPlayer() {
         : (airborne ? (player.vel.y < 0.0f ? -playerFacing * 1.2f : playerFacing * 0.8f)
                     : 0.0f);
 
+    // DrawTexturePro treats dest.x/dest.y as the rotation-pivot position when
+    // origin is non-zero. Passing a pre-offset top-left here applied the origin twice,
+    // which lifted the sprite high above its collision body. Anchor the destination
+    // directly at the character centre/feet; origin is measured from the sprite's top-left.
     const Rectangle dest = {
-        centerX - drawW * 0.5f,
-        groundY - drawH + offsetY,
+        centerX,
+        groundY + offsetY,
         drawW,
         drawH
     };
