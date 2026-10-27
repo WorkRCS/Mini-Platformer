@@ -91,6 +91,7 @@ Sound sfxHurt {};
 Sound sfxStomp {};
 Sound sfxLevel {};
 Sound sfxMenu {};
+Sound sfxLand {};
 bool audioReady = false;
 Font uiFont {};
 bool customUiFont = false;
@@ -213,12 +214,14 @@ Sound MakeTone(float frequency, float duration, float volume, bool noisy = false
                                std::max(0.0f, (duration - t) / 0.035f);
         const float phase = 2.0f * PI * frequency * t *
                             (1.0f - 0.16f * progress);
-        float value = std::sin(phase);
+        // A quiet second harmonic makes the synthesized effects less like a flat test beep.
+        float value = std::sin(phase) + 0.22f * std::sin(phase * 2.03f + progress * 1.2f);
         if (noisy) {
             unsigned int seed = i * 1103515245u + 12345u;
             const float noise = (static_cast<float>((seed >> 16) & 0x7fff) / 16383.5f) - 1.0f;
-            value = value * 0.72f + noise * 0.28f;
+            value = value * 0.66f + noise * 0.34f;
         }
+        value *= 0.82f;
         const float sample = std::clamp(value * envelope * volume, -1.0f, 1.0f);
         samples[i] = static_cast<short>(sample * 32767.0f);
     }
@@ -245,6 +248,7 @@ void InitGameAudio() {
     sfxStomp = MakeTone(250.0f, 0.10f, 0.35f);
     sfxLevel = MakeTone(680.0f, 0.24f, 0.28f);
     sfxMenu = MakeTone(420.0f, 0.07f, 0.20f);
+    sfxLand = MakeTone(135.0f, 0.11f, 0.22f, true);
 }
 
 void CloseGameAudio() {
@@ -255,6 +259,7 @@ void CloseGameAudio() {
     UnloadSound(sfxStomp);
     UnloadSound(sfxLevel);
     UnloadSound(sfxMenu);
+    UnloadSound(sfxLand);
     CloseAudioDevice();
     audioReady = false;
 }
@@ -762,6 +767,7 @@ void UpdateGame(float dt) {
         landingTimer = 0.15f;
         SpawnFootDust({ player.pos.x + PLAYER_W * 0.5f,
                         player.pos.y + PLAYER_H - 1.0f }, 9);
+        PlayFx(sfxLand);
     }
 
     if (player.grounded && std::fabs(move) > 0.1f) {
