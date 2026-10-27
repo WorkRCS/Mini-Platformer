@@ -1810,13 +1810,13 @@ void DrawTitle() {
     // Floating islands make the game identity readable before pressing Play.
     const float oldMenuCamera = cameraX;
     cameraX = 0.0f;
-    DrawPlatform(Platform{{84,365,220,21}});
-    DrawPlatform(Platform{{328,326,95,18}});
+    DrawPlatform(Platform{{70,345,350,70}});
+    DrawPlatform(Platform{{345,306,95,18}});
     cameraX = oldMenuCamera;
-    DrawMenuHero(201.0f, 365.0f);
-    DrawCircleV({ 353, 278 }, 14, Color{ 255, 207, 80, 35 });
-    DrawCircleV({ 353, 278 }, 8, C_GOLD);
-    DrawCircleLines(353, 278, 8, Color{ 255, 249, 198, 255 });
+    DrawMenuHero(201.0f, 345.0f);
+    DrawCircleV({ 370, 259 }, 14, Color{ 255, 207, 80, 35 });
+    DrawCircleV({ 370, 259 }, 8, C_GOLD);
+    DrawCircleLines(370, 259, 8, Color{ 255, 249, 198, 255 });
     DrawUIText("10 LEVELS", 81, 427, 19, C_GOLD);
     DrawUIText("Easy, Medium and Hard difficulty", 81, 454, 15,
              Color{ 177, 203, 223, 255 });
