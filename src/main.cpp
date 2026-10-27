@@ -916,9 +916,9 @@ void DrawPlayer() {
     }
 
     const Rectangle sourceBase = {
-        static_cast<float>(frame * 96),
-        static_cast<float>(row * 120),
-        96.0f, 120.0f
+        static_cast<float>(frame * 64),
+        static_cast<float>(row * 80),
+        64.0f, 80.0f
     };
     Rectangle source = sourceBase;
     if (playerFacing < 0.0f) {
@@ -1103,8 +1103,8 @@ void DrawMenuHero(float x, float y) {
 
     if (characterAtlas.id != 0) {
         const int idleFrame = static_cast<int>(gameClock * 3.0f) % 5;
-        const Rectangle source = { static_cast<float>(idleFrame * 96), 0.0f, 96.0f, 120.0f };
-        const Rectangle dest = { x - 40.0f, y - 15.0f + bob, 80.0f, 95.0f };
+        const Rectangle source = { static_cast<float>(idleFrame * 64), 0.0f, 64.0f, 80.0f };
+        const Rectangle dest = { x - 40.0f, y - 15.0f + bob, 80.0f, 100.0f };
         DrawTexturePro(characterAtlas, source, dest, { 0.0f, 0.0f }, 0.0f, WHITE);
     } else {
         DrawCircleV({ x, y + 28.0f + bob }, 18.0f, C_MINT);
