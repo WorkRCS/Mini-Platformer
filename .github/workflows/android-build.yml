@@ -1,10 +1,9 @@
 name: Build Android APK
 
+# PC gameplay is the current milestone. Run this workflow manually when beginning
+# the Android port/optimization phase.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   android-debug-apk:
