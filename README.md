@@ -14,6 +14,7 @@ A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the an
 - Procedurally generated jump, coin, stomp, damage, menu, and level sound effects (no sound files needed)
 - Readable anti-aliased system UI font (Segoe UI on Windows, Roboto on Android, DejaVu/Liberation on Linux where installed)
 - Desktop executable/window icon and Android launcher icon
+- Settings screen with a local-only PIN unlock (`74330`) for invincibility/safe exploration; a Disable Cheat button immediately restores normal rules
 - Bundled PNG assets for cactus, stone pillar, solid ground, medium floating platforms, and small floating platforms
 - Touch-control arrows and jump icon are drawn in code; no button-image files are needed
 - Resizable desktop window and landscape Android project
@@ -69,7 +70,7 @@ If MSYS2 is installed somewhere other than `C:\msys64`, update `compilerPath` an
 
 - Regular platforms are solid surfaces and do not damage the player.
 - All damaging hazards are visibly drawn and placed on a platform surface. They include thorn bushes, red spikes, crystals, and ember jets; they use the same rectangles as their collision checks.
-- A hit shows a red damage banner, a visible hit ring, particles, knockback, sound, and a short respawn pause.
+- A hit shows the obstacle that caused it (cactus/pillar art for those hazards), impact particles, knockback, sound, and a short respawn pause. The optional image loader preserves PNG alpha and removes only border-connected near-black matte.
 - If you already cloned this project, run `git pull origin main` before rebuilding so you get the ten stages, art files, and latest collision fixes.
 
 ## Android
