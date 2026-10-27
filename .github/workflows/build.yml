@@ -12,6 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fetch optional CC0 environment and sound assets
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/fetch-openworld-assets.ps1
+
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
