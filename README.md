@@ -14,7 +14,8 @@ A C++17 2D platformer built with [raylib](https://www.raylib.com/), using the an
 - Procedurally generated jump, coin, stomp, damage, menu, and level sound effects (no sound files needed)
 - Readable anti-aliased system UI font (Segoe UI on Windows, Roboto on Android, DejaVu/Liberation on Linux where installed)
 - Desktop executable/window icon and Android launcher icon
-- Optional image assets for cactus, pillar, large platform, and small platform
+- Bundled PNG assets for cactus, stone pillar, solid ground, medium floating platforms, and small floating platforms
+- Touch-control arrows and jump icon are drawn in code; no button-image files are needed
 - Resizable desktop window and landscape Android project
 
 ## Controls
@@ -33,13 +34,14 @@ Open **MSYS2 UCRT64** (not PowerShell) and install the dependencies:
 pacman -S --needed git mingw-w64-ucrt-x86_64-raylib mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
 ```
 
-The background, character, and app icon files are tracked in `assets/`. The C++ code also recognises these optional transparent PNGs if you add them:
-- `assets/cactus.png` — 64×96 px recommended
-- `assets/pillar.png` — 64×128 px recommended
-- `assets/platform_large.png` — 256×64 px recommended
-- `assets/platform_small.png` — 128×32 px recommended
+The background, single-character image, and desktop/mobile app icons are tracked in `assets/`. The following PNG object assets are included and loaded automatically:
+- `assets/cactus.png` — 64×96 px
+- `assets/pillar.png` — 64×128 px
+- `assets/platform_ground.png` — 256×64 px, for solid ground
+- `assets/platform_medium.png` — 192×48 px, for medium floating platforms
+- `assets/platform_small.png` — 128×40 px, for small floating platforms
 
-Those four object files are not required; clear built-in art is drawn until you add your own. If an older clone reports `Failed to open file`, run `git pull origin main` first, then re-run the CMake configure command so the assets are copied to `build/assets/`.
+Ground and floating-platform images repeat at their natural aspect ratio. Touch-control symbols are drawn using raylib primitives instead of image assets, so they remain crisp at mobile sizes. If an older clone reports a missing asset, run `git pull origin main`, then re-run CMake configure so the files are copied to `build/assets/`.
 
 Clone the project and build it:
 
