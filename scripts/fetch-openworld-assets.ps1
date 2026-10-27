@@ -71,6 +71,36 @@ function Install-Model([string]$packRoot, [string]$namePattern, [string]$targetN
     Write-Host "Installed $relativeModelPath"
 }
 
+function Download-CC0Model([string]$url, [string]$targetName) {
+    $destination = Join-Path $threeD $targetName
+    $temporary = $destination + '.download'
+
+    try {
+        Write-Host "Downloading CC0 3D model from its publisher: $url"
+        Invoke-WebRequest -Uri $url -OutFile $temporary -UseBasicParsing -Headers @{ 'User-Agent' = 'WildboundAssetSetup/1.0' }
+
+        # GLB files start with the ASCII magic bytes "glTF". Verify the response
+        # before replacing a previously downloaded valid file.
+        $stream = [System.IO.File]::OpenRead($temporary)
+        try {
+            $header = New-Object byte[] 4
+            $read = $stream.Read($header, 0, 4)
+        } finally {
+            $stream.Dispose()
+        }
+
+        if ($read -ne 4 -or [System.Text.Encoding]::ASCII.GetString($header) -ne 'glTF') {
+            throw "The response was not a valid binary glTF (GLB) file."
+        }
+
+        Move-Item -LiteralPath $temporary -Destination $destination -Force
+        Write-Host "Installed CC0 model: $targetName"
+    } catch {
+        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
+        Write-Warning "Could not install $targetName. The game will use procedural fallback art. $($_.Exception.Message)"
+    }
+}
+
 function Install-Sound([string]$packRoot, [string]$pattern, [string]$targetName, [int]$fallbackIndex = 0) {
     # raylib supports common formats including WAV/OGG/MP3/FLAC; Kenney audio packs
     # may not distribute every effect as WAV, so preserve the original extension.
@@ -96,6 +126,12 @@ $natureRoot = Download-KenneyPack 'nature-kit'
 Install-Model $natureRoot '(?i)(tree|pine|oak|birch)' 'world_tree'
 Install-Model $natureRoot '(?i)(rock|boulder|stone)' 'world_rock'
 
+# Self-contained CC0 GLBs from Gobkit. They are downloaded at build/setup time,
+# then bundled locally so the running game has no internet dependency.
+Download-CC0Model 'https://gobkit.com/freebies/human003/KnightCaptain.glb' 'cc0_hero.glb'
+Download-CC0Model 'https://gobkit.com/freebies/human010/OrcChainBrute.glb' 'cc0_monster.glb'
+Download-CC0Model 'https://gobkit.com/freebies/human010/BloodironJuggernaut.glb' 'cc0_boss.glb'
+
 if (-not $SkipAudio) {
     $rpgAudioRoot = Download-KenneyPack 'rpg-audio'
     $impactRoot = Download-KenneyPack 'impact-sounds'
@@ -108,15 +144,16 @@ if (-not $SkipAudio) {
 }
 
 @"
-Assets used by Wildbound are fetched from official Kenney pages:
-- Nature Kit: https://kenney.nl/assets/nature-kit
-- RPG Audio: https://kenney.nl/assets/rpg-audio
-- Impact Sounds: https://kenney.nl/assets/impact-sounds
-- Interface Sounds: https://kenney.nl/assets/interface-sounds
+Assets used by Wildbound are fetched from their publishers:
+- Kenney Nature Kit: https://kenney.nl/assets/nature-kit (CC0)
+- Kenney RPG Audio: https://kenney.nl/assets/rpg-audio (CC0)
+- Kenney Impact Sounds: https://kenney.nl/assets/impact-sounds (CC0)
+- Kenney Interface Sounds: https://kenney.nl/assets/interface-sounds (CC0)
+- Gobkit KnightCaptain, OrcChainBrute, BloodironJuggernaut: https://gobkit.com/api/free (CC0 1.0)
 
-These packs are marked CC0 on their publisher pages. The game keeps procedural
-fallbacks if a model or sound is unavailable. Review each source page before
-redistributing a release, and do not bundle the full extracted source packs.
+The game keeps procedural fallbacks if an asset is unavailable. Review each
+source page before redistributing a release, and do not bundle the full
+extracted source packs.
 "@ | Set-Content -LiteralPath (Join-Path $assetsRoot '3D_ASSET_SOURCES.txt') -Encoding utf8
 
 Write-Host ''

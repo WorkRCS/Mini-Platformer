@@ -131,6 +131,9 @@ bool rockModelReady = false;
 bool sketchfabHeroReady = false;
 bool sketchfabMonsterReady = false;
 bool sketchfabBossReady = false;
+bool heroModelFacesPositiveZ = false;
+bool monsterModelFacesPositiveZ = false;
+bool bossModelFacesPositiveZ = false;
 
 Vector2 newTouchPresses[10] = {};
 int newTouchPressCount = 0;
@@ -477,14 +480,32 @@ void LoadOptionalNatureModels() {
     if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("assets/3d/world_rock_path.txt");
     rockModelReady = natureRock.meshCount > 0;
 
+    // Optional user-installed Sketchfab models override the bundled CC0 defaults.
     sketchfabHeroModel = LoadOptionalModelStem("assets/3d/sketchfab_hero");
     if (sketchfabHeroModel.meshCount == 0) sketchfabHeroModel = LoadModelFromManifest("assets/3d/sketchfab_hero_path.txt");
+    heroModelFacesPositiveZ = false;
+    if (sketchfabHeroModel.meshCount == 0) {
+        sketchfabHeroModel = LoadOptionalModelStem("assets/3d/cc0_hero");
+        heroModelFacesPositiveZ = sketchfabHeroModel.meshCount > 0;
+    }
     sketchfabHeroReady = sketchfabHeroModel.meshCount > 0;
+
     sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/sketchfab_monster");
     if (sketchfabMonsterModel.meshCount == 0) sketchfabMonsterModel = LoadModelFromManifest("assets/3d/sketchfab_monster_path.txt");
+    monsterModelFacesPositiveZ = false;
+    if (sketchfabMonsterModel.meshCount == 0) {
+        sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/cc0_monster");
+        monsterModelFacesPositiveZ = sketchfabMonsterModel.meshCount > 0;
+    }
     sketchfabMonsterReady = sketchfabMonsterModel.meshCount > 0;
+
     sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss");
     if (sketchfabBossModel.meshCount == 0) sketchfabBossModel = LoadModelFromManifest("assets/3d/sketchfab_boss_path.txt");
+    bossModelFacesPositiveZ = false;
+    if (sketchfabBossModel.meshCount == 0) {
+        sketchfabBossModel = LoadOptionalModelStem("assets/3d/cc0_boss");
+        bossModelFacesPositiveZ = sketchfabBossModel.meshCount > 0;
+    }
     sketchfabBossReady = sketchfabBossModel.meshCount > 0;
 
     TraceLog(LOG_INFO,
@@ -611,8 +632,10 @@ void DrawPlayerModel() {
     DrawCircle3D(V3(p.x, 0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                  WithAlpha(Color{ 14, 22, 25, 255 }, 105));
     if (sketchfabHeroReady) {
-        // Sketchfab downloads are expected to be around human height and face toward -Z.
-        const float yaw = std::atan2(-player.facing.x, -player.facing.z) * RAD2DEG;
+        // Sketchfab models conventionally face -Z; bundled Gobkit CC0 models face +Z.
+        const float yaw = heroModelFacesPositiveZ
+            ? std::atan2(player.facing.x, player.facing.z) * RAD2DEG
+            : std::atan2(-player.facing.x, -player.facing.z) * RAD2DEG;
         DrawModelEx(sketchfabHeroModel, V3(p.x, p.y, p.z), V3(0.0f, 1.0f, 0.0f), yaw,
                     V3(1.35f, 1.35f, 1.35f), WHITE);
     } else {
@@ -661,7 +684,11 @@ void DrawPlayerModel() {
 
 void DrawMonsterModel(Vector3 p, int kind, float phase, float scale, Color color) {
     if (sketchfabMonsterReady) {
-        const float yaw = std::atan2(-(player.position.x-p.x), -(player.position.z-p.z)) * RAD2DEG;
+        const float dx = player.position.x - p.x;
+        const float dz = player.position.z - p.z;
+        const float yaw = monsterModelFacesPositiveZ
+            ? std::atan2(dx, dz) * RAD2DEG
+            : std::atan2(-dx, -dz) * RAD2DEG;
         const float modelScale = scale*1.35f;
         DrawModelEx(sketchfabMonsterModel, p, V3(0.0f, 1.0f, 0.0f), yaw,
                     V3(modelScale, modelScale, modelScale), WHITE);
@@ -692,7 +719,11 @@ void DrawBossModel(int i) {
     const Color c = BossColor(i);
     const float pulse = 1.0f + std::sin(worldClock*3.0f+i)*0.035f;
     if (sketchfabBossReady) {
-        const float yaw = std::atan2(-(player.position.x-b.position.x), -(player.position.z-b.position.z)) * RAD2DEG;
+        const float dx = player.position.x - b.position.x;
+        const float dz = player.position.z - b.position.z;
+        const float yaw = bossModelFacesPositiveZ
+            ? std::atan2(dx, dz) * RAD2DEG
+            : std::atan2(-dx, -dz) * RAD2DEG;
         const float modelScale = 1.45f*scale*pulse;
         DrawModelEx(sketchfabBossModel, b.position, V3(0.0f, 1.0f, 0.0f), yaw,
                     V3(modelScale, modelScale, modelScale), WHITE);
