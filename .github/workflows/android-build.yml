@@ -29,11 +29,17 @@ jobs:
           fi
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;36.0.0" "ndk;28.2.13676358" "cmake;4.1.2"
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;4.1.2"
 
       - name: Verify Gradle JVM
         working-directory: android
         run: ./gradlew --version
+
+      - name: Verify NDK metadata
+        shell: bash
+        run: |
+          test -f "$ANDROID_HOME/ndk/27.0.12077973/source.properties"
+          grep -E 'Pkg.Revision' "$ANDROID_HOME/ndk/27.0.12077973/source.properties"
 
       - name: Build debug APK
         working-directory: android
