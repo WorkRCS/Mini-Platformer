@@ -9,12 +9,12 @@ The Android package ID remains `com.workrcs.tinytrails` for later compatibility 
 - A 3D third-person world spanning four connected regions: Emerald Wilds, Golden Dunes, Frostbound Pass, and Ember Frontier
 - Desktop-first controls: WASD to move relative to the camera, Space to jump, left click or J to attack, hold and drag the right mouse button to orbit the camera, use the mouse wheel to zoom, K to use Blink, and Tab / P / Escape to pause
 - A resizable PC window, desktop HUD, mission callouts, player HP/XP, monster count, boss HP, and status messages
-- Procedural hero and creature meshes as fallback art; roaming enemies with basic chase/attack behavior
+- Optional Sketchfab GLB/glTF hero, monster, boss, tree, and rock models with procedural fallback art; roaming enemies with basic chase/attack behavior
 - Four sequential boss encounters with separate health pools, mission text, unlock requirements, and a final victory state
 - Melee attacks, an area special ability, hit impact, particles, monster defeat effects, hurt feedback, and rebirth/respawn
 - Four biome palettes with procedural trees, rocks, crystals, trails, and boss altars
 - Synthesized sound effects and looping music as fallback, with optional loaded audio files
-- Optional Kenney Nature Kit glTF/GLB trees and rocks, loaded when the files are present
+- Optional Kenney Nature Kit trees/rocks and manually installed Sketchfab model assets
 - No backend/server or internet connection is required while playing
 
 **This is the first 3D gameplay foundation, not the final high-graphics release.** The player and monster shapes are currently procedural placeholder meshes, and their animations are procedural. Rigged hero/monster models with imported run/jump/attack clips, improved terrain and materials, additional mission objectives, richer boss patterns, save-to-disk progression, and detailed performance profiling are further PC milestones.
@@ -61,13 +61,24 @@ Run from the MSYS2 UCRT64 terminal so raylib's runtime DLLs are on PATH. If asse
 
 From Windows PowerShell, the helper script can look up official download links, fetch packs, extract them in a temporary folder, and copy only selected runtime files into `assets/`. You do not have to browse and download each chosen file manually. It is optional; the game keeps procedural environment and synthesized sound fallbacks if downloads or expected file formats are unavailable.
 
-The script currently attempts to use:
+The optional helper below installs models you have downloaded from Sketchfab (it does not bypass the site login or download controls):
+
+1. Download a free model from the source pages listed in [`assets/3d/SKETCHFAB_CREDITS.md`](assets/3d/SKETCHFAB_CREDITS.md) and extract the downloaded archive.
+2. In PowerShell, pass the model file paths to the installer. Example:
+
+```powershell
+.\\scripts\\install-sketchfab-models.ps1 -HeroPath "C:\\Users\\YOUR_NAME\\Downloads\\hero.glb" -MonsterPath "C:\\Users\\YOUR_NAME\\Downloads\\monster.glb" -TreePath "C:\\Users\\YOUR_NAME\\Downloads\\tree.glb" -RockPath "C:\\Users\\YOUR_NAME\\Downloads\\rock.glb"
+```
+
+Use the actual paths on your PC; `.gltf` files are also supported if the adjacent textures and `.bin` files are kept together. Optional files are loaded as follows: `sketchfab_hero`, `sketchfab_monster`, `sketchfab_boss`, `sketchfab_tree`, and `sketchfab_rock` under `assets/3d/`. Review the credits file and the exact model page's current license before sharing a build. Sketchfab model downloads may require a signed-in account.
+
+The Kenney helper below still attempts to download these packs:
 - [Kenney Nature Kit](https://kenney.nl/assets/nature-kit) — CC0 3D nature models
 - [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) — CC0 combat/foley sounds
 - [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) — CC0 impact sounds
 - [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) — CC0 UI sounds
 
-Kenney says the assets on its asset pages are public-domain/CC0 and may be used in commercial projects; see its [licence FAQ](https://kenney.nl/support). Only the selected runtime assets are copied into the project. Recheck pack licences before release. Quaternius/Mixamo character and animation integration is not completed yet. For this raylib path, export rigged models to glTF/GLB using Blender before attempting runtime use.
+Kenney says the assets on its asset pages are public-domain/CC0 and may be used in commercial projects; see its [licence FAQ](https://kenney.nl/support). Only the selected runtime assets are copied into the project. Recheck pack licences before release. Sketchfab assets are loaded as static models; GLB model loading does not itself enable run/attack animations. Those animation clips need a separate runtime animation integration step.
 
 GitHub Actions also attempts the asset fetch before the desktop CMake configure step, then builds a Windows desktop executable. If asset downloading fails, the fallback build can still proceed.
 
@@ -100,6 +111,8 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 src/adventure3d.cpp               # active 3D prototype
 src/main.cpp                      # preserved 2D legacy source
 scripts/fetch-openworld-assets.ps1
+scripts/install-sketchfab-models.ps1
+assets/3d/SKETCHFAB_CREDITS.md
 CMakeLists.txt
 .github/workflows/build.yml       # PC build and optional asset setup
 .github/workflows/android-build.yml
