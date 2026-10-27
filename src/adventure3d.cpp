@@ -90,6 +90,10 @@ struct Player {
 Screen screen = Screen::Menu;
 Player player;
 Camera3D camera = {};
+// Third-person orbit camera: right-drag rotates, mouse wheel zooms.
+float cameraYaw = 0.0f;
+float cameraPitch = 0.46f;
+float cameraDistance = 12.0f;
 std::vector<Prop> props;
 std::vector<Monster> monsters;
 std::vector<Particle> particles;
@@ -397,8 +401,12 @@ void UnloadOptionalNatureModels() {
 }
 
 void InitCamera() {
-    camera.position = V3(player.position.x, 7.0f, player.position.z + 11.0f);
-    camera.target = V3(player.position.x, 1.0f, player.position.z);
+    const Vector3 focus = V3(player.position.x, player.position.y + 1.0f, player.position.z);
+    const float horizontal = cameraDistance * std::cos(cameraPitch);
+    camera.position = V3(focus.x + std::sin(cameraYaw) * horizontal,
+                         focus.y + std::sin(cameraPitch) * cameraDistance,
+                         focus.z + std::cos(cameraYaw) * horizontal);
+    camera.target = focus;
     camera.up = V3(0.0f, 1.0f, 0.0f);
     camera.fovy = 52.0f;
     camera.projection = CAMERA_PERSPECTIVE;
@@ -448,7 +456,8 @@ void DrawEnvironment() {
         for (int iz = -4; iz < 4; ++iz) {
             const float x = ix*tile + tile*0.5f;
             const float z = iz*tile + tile*0.5f;
-            DrawCube(V3(x, -0.22f, z), tile, 0.44f, tile, GroundColor(GetBiome(x), (ix+iz+40)%3));
+            // Flat terrain tiles remove the chunky cube edges and harsh checkerboard look.
+            DrawPlane(V3(x, -0.012f, z), Vector2{ tile, tile }, GroundColor(GetBiome(x), 1));
         }
     }
     // Soft trails point toward the next mission while keeping the map open for exploration.
@@ -490,6 +499,8 @@ void DrawEnvironment() {
 
 void DrawPlayerModel() {
     const Vector3 p = player.position;
+    DrawCircle3D(V3(p.x, 0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
+                 WithAlpha(Color{ 14, 22, 25, 255 }, 105));
     const float step = std::sin(player.walkClock*10.5f) * 0.23f;
     const float bodyBob = player.grounded ? std::fabs(std::sin(player.walkClock*10.5f))*0.05f : 0.0f;
     Color armor = player.hurtFlash > 0.0f ? WHITE : Color{ 65, 109, 164, 255 };
@@ -497,8 +508,14 @@ void DrawPlayerModel() {
     // Tiny procedural hero model is the fallback while the real rigged model is being integrated.
     DrawCube(V3(p.x, p.y+1.10f+bodyBob, p.z), 0.56f, 0.78f, 0.36f, armor);
     DrawCube(V3(p.x, p.y+0.64f+bodyBob, p.z-0.02f), 0.62f, 0.32f, 0.41f, cloth);
+    // Cape, shoulder plates, chest crest and visor give the placeholder hero a clearer silhouette.
+    DrawCube(V3(p.x, p.y+1.08f+bodyBob, p.z+0.235f), 0.38f, 0.60f, 0.09f, Color{ 112, 47, 59, 255 });
+    DrawSphere(V3(p.x-0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
+    DrawSphere(V3(p.x+0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
+    DrawSphere(V3(p.x, p.y+1.14f+bodyBob, p.z-0.205f), 0.09f, C_GOLD);
     DrawSphere(V3(p.x, p.y+1.75f+bodyBob, p.z), 0.25f, Color{ 226, 188, 151, 255 });
     DrawCylinder(V3(p.x, p.y+2.00f+bodyBob, p.z), 0.15f, 0.22f, 0.12f, 7, C_GOLD);
+    DrawCube(V3(p.x, p.y+1.78f+bodyBob, p.z-0.215f), 0.26f, 0.075f, 0.045f, C_CYAN);
     const Vector3 leftHip = V3(p.x-0.18f, p.y+0.58f, p.z);
     const Vector3 rightHip = V3(p.x+0.18f, p.y+0.58f, p.z);
     DrawCylinderEx(leftHip, V3(p.x-0.18f+step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
@@ -571,6 +588,8 @@ void DrawHealthBar3D(Vector3 pos, float health, float maxHealth, float width, Co
 void DrawWorldEntities() {
     for (const Monster& m : monsters) {
         if (!m.alive || DistXZ(player.position, m.position)>75.0f) continue;
+        DrawCircle3D(V3(m.position.x, 0.016f, m.position.z), 0.48f, V3(1.0f, 0.0f, 0.0f), 90.0f,
+                     WithAlpha(Color{ 12, 18, 20, 255 }, 95));
         DrawMonsterModel(m.position, m.kind, m.phase, 0.76f, MonsterColor(m.kind));
         DrawHealthBar3D(V3(m.position.x, 2.35f, m.position.z), m.health, m.maxHealth, 1.15f, C_RED);
     }
@@ -721,6 +740,13 @@ void UpdatePlayer(float dt) {
             move.z += ClampF(delta.y/(joy.height*0.43f), -1.0f, 1.0f);
         }
     }
+    // Convert keyboard/touch input from camera space into world space.
+    const float inputX = move.x;
+    const float inputZ = move.z;
+    const float sinYaw = std::sin(cameraYaw);
+    const float cosYaw = std::cos(cameraYaw);
+    move.x = inputX*cosYaw - inputZ*sinYaw;
+    move.z = inputX*sinYaw + inputZ*cosYaw;
     const float len = std::sqrt(move.x*move.x+move.z*move.z);
     if (len > 1.0f) { move.x/=len; move.z/=len; }
     if (len > 0.1f) {
@@ -758,15 +784,27 @@ void UpdatePlayer(float dt) {
     if (IsKeyPressed(KEY_J) || Pressed(ButtonRect(sw-104*uiScale, sh-104*uiScale, 90*uiScale, 90*uiScale))) PlayerAttack();
     if (IsKeyPressed(KEY_K) || Pressed(ButtonRect(sw-220*uiScale, sh-154*uiScale, 80*uiScale, 80*uiScale))) PlayerAbility();
 #else
-    // Desktop-native controls: attack with left mouse/J, special ability with right mouse/K.
+    // Right mouse is reserved for camera orbit, so Blink stays on K on desktop.
     if (IsKeyPressed(KEY_J) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) PlayerAttack();
-    if (IsKeyPressed(KEY_K) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) PlayerAbility();
+    if (IsKeyPressed(KEY_K)) PlayerAbility();
 #endif
 
-    // Camera smoothing creates a stable third-person chase camera on desktop and Android.
-    const Vector3 desiredPos = V3(player.position.x-player.facing.x*2.0f, 7.2f+player.position.y, player.position.z+10.5f-player.facing.z*1.5f);
-    camera.position = Vector3Lerp(camera.position, desiredPos, ClampF(dt*3.5f, 0.0f, 1.0f));
-    camera.target = Vector3Lerp(camera.target, V3(player.position.x, player.position.y+0.95f, player.position.z), ClampF(dt*5.0f, 0.0f, 1.0f));
+    // Orbit with right-mouse drag and zoom with the wheel on desktop.
+#if !defined(__ANDROID__) && !defined(PLATFORM_ANDROID)
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+        const Vector2 mouseDelta = GetMouseDelta();
+        cameraYaw -= mouseDelta.x * 0.006f;
+        cameraPitch = ClampF(cameraPitch + mouseDelta.y * 0.0045f, 0.16f, 0.92f);
+    }
+    cameraDistance = ClampF(cameraDistance - GetMouseWheelMove() * 1.25f, 6.5f, 18.0f);
+#endif
+    const Vector3 focus = V3(player.position.x, player.position.y + 1.0f, player.position.z);
+    const float horizontal = cameraDistance * std::cos(cameraPitch);
+    const Vector3 desiredPos = V3(focus.x + std::sin(cameraYaw) * horizontal,
+                                  focus.y + std::sin(cameraPitch) * cameraDistance,
+                                  focus.z + std::cos(cameraYaw) * horizontal);
+    camera.position = Vector3Lerp(camera.position, desiredPos, ClampF(dt*7.0f, 0.0f, 1.0f));
+    camera.target = Vector3Lerp(camera.target, focus, ClampF(dt*8.0f, 0.0f, 1.0f));
 
     if (player.kills >= 3 && bosses[0].alive && !BossUnlocked(0)) {
         SetToast("A HUNTING RITUAL BEGINS", 3.0f);
@@ -912,7 +950,7 @@ void DrawHud() {
     DrawText("JUMP",static_cast<int>(jump.x+9*scale),static_cast<int>(jump.y+13*scale),static_cast<int>(10*scale),C_INK);
 
 #else
-    const char* desktopControls = "WASD / ARROWS: MOVE    SPACE: JUMP    LEFT CLICK / J: ATTACK    RIGHT CLICK / K: BLINK";
+    const char* desktopControls = "WASD: MOVE   SPACE: JUMP   LEFT CLICK / J: ATTACK   RIGHT-DRAG: CAMERA   WHEEL: ZOOM   K: BLINK";
     DrawRectangleRounded({16*scale,sh-62*scale,sw-32*scale,22*scale},0.2f,6,WithAlpha(C_INK,175));
     DrawText(desktopControls,static_cast<int>(25*scale),static_cast<int>(sh-56*scale),
              static_cast<int>(11*scale),Color{210,224,240,255});
@@ -946,7 +984,7 @@ void DrawMenu() {
     DrawText("TOUCH PAD: MOVE   JUMP   ATTACK   BLINK",
              static_cast<int>(sw*0.135f),static_cast<int>(sh*0.75f),static_cast<int>(12*scale),Color{210,224,240,255});
 #else
-    DrawText("WASD / ARROWS: MOVE   SPACE: JUMP   LEFT CLICK / J: ATTACK   RIGHT CLICK / K: BLINK",
+    DrawText("WASD: MOVE   SPACE: JUMP   LEFT CLICK / J: ATTACK   RIGHT-DRAG: CAMERA   WHEEL: ZOOM   K: BLINK",
              static_cast<int>(sw*0.135f),static_cast<int>(sh*0.75f),static_cast<int>(12*scale),Color{210,224,240,255});
 #endif
     DrawText("Offline prototype | Procedural fallback art | No server required",
@@ -1039,19 +1077,20 @@ int main() {
         }
 
         const Biome biome=GetBiome(player.position.x);
-        const Color sky = biome==Biome::Dune ? Color{ 237, 190, 123, 255 }
-                        : (biome==Biome::Frost ? Color{ 143, 185, 212, 255 }
-                        : (biome==Biome::Ember ? Color{ 99, 68, 79, 255 } : Color{ 105, 177, 212, 255 }));
+        const Color skyTop = biome==Biome::Dune ? Color{ 184, 103, 58, 255 }
+                           : (biome==Biome::Frost ? Color{ 62, 112, 163, 255 }
+                           : (biome==Biome::Ember ? Color{ 54, 42, 70, 255 } : Color{ 47, 104, 143, 255 }));
+        const Color skyHorizon = biome==Biome::Dune ? Color{ 247, 216, 160, 255 }
+                               : (biome==Biome::Frost ? Color{ 194, 222, 231, 255 }
+                               : (biome==Biome::Ember ? Color{ 196, 102, 75, 255 } : Color{ 165, 205, 198, 255 }));
         BeginDrawing();
-        ClearBackground(sky);
+        ClearBackground(skyTop);
+        DrawRectangleGradientV(0, 0, sw, sh, skyTop, skyHorizon);
         BeginMode3D(camera);
             DrawEnvironment();
             DrawWorldEntities();
             DrawPlayerModel();
-            // A subtle horizon grid gives distance cues without requiring a heavy shader.
-            if (DistXZ(player.position,V3(player.position.x,0,0)) < 20.0f) {
-                DrawGrid(24,4.0f);
-            }
+            // Removed the diagnostic grid that popped in and out near the center lane.
         EndMode3D();
         if (screenShake > 0.0f) {
             DrawRectangle(0,0,sw,sh,WithAlpha(C_RED,static_cast<unsigned char>(screenShake*55.0f/0.32f)));
