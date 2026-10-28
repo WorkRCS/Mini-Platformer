@@ -148,6 +148,11 @@ CharacterAnimationSet bossAnimations;
 float heroGroundOffset = 0.0f;
 float monsterGroundOffset = 0.0f;
 float bossGroundOffset = 0.0f;
+Model terrainModel = {};
+Texture2D terrainTexture = {};
+Model fallbackRockModel = {};
+bool terrainReady = false;
+bool fallbackRockReady = false;
 bool treeModelReady = false;
 bool rockModelReady = false;
 bool sketchfabHeroReady = false;
@@ -190,6 +195,186 @@ const char* BiomeName(Biome b) {
     }
     return "UNKNOWN WILDS";
 }
+
+constexpr float TERRAIN_MIN_X = WORLD_MIN_X - 26.0f;
+constexpr float TERRAIN_MAX_X = WORLD_MAX_X + 26.0f;
+constexpr float TERRAIN_MIN_Z = -WORLD_HALF_Z - 15.0f;
+constexpr float TERRAIN_MAX_Z = WORLD_HALF_Z + 15.0f;
+
+float TerrainHeightAt(float x, float z) {
+    const float outer = ClampF((std::fabs(z) - 2.5f)/12.0f, 0.0f, 1.0f);
+    const float rolling = (1.55f*std::sin(x*0.027f + std::sin(z*0.052f))
+                         + 0.92f*std::sin(z*0.083f + x*0.019f)
+                         + 0.55f*std::cos(x*0.061f - z*0.043f))*(0.28f + 0.82f*outer);
+    float height = 2.65f + rolling;
+    switch (GetBiome(x)) {
+        case Biome::Emerald:
+            height += 0.25f*std::sin(x*0.12f + z*0.07f);
+            break;
+        case Biome::Dune:
+            height = 2.35f + 0.72f*std::sin(x*0.023f + std::sin(z*0.042f))
+                   + 0.35f*std::sin(z*0.085f + x*0.012f);
+            break;
+        case Biome::Frost:
+            height = 3.45f + 1.25f*std::fabs(std::sin(x*0.047f + z*0.018f))
+                   + 0.70f*std::sin(z*0.074f + x*0.021f);
+            break;
+        case Biome::Ember:
+            height = 2.20f + 1.1f*std::sin(x*0.031f + z*0.028f)
+                   + 0.58f*std::sin(z*0.095f - x*0.017f);
+            break;
+    }
+    return std::max(0.25f, height);
+}
+
+Color BlendColor(Color a, Color b, float t) {
+    t = ClampF(t, 0.0f, 1.0f);
+    return Color{
+        static_cast<unsigned char>(a.r + (b.r - a.r)*t),
+        static_cast<unsigned char>(a.g + (b.g - a.g)*t),
+        static_cast<unsigned char>(a.b + (b.b - a.b)*t), 255
+    };
+}
+
+float SurfaceNoise(float x, float z) {
+    return 0.5f + 0.22f*std::sin(x*0.13f + std::sin(z*0.21f))
+                + 0.17f*std::cos(z*0.29f - x*0.071f)
+                + 0.08f*std::sin(x*0.91f + z*0.77f)
+                + 0.035f*std::cos(x*2.8f - z*2.3f);
+}
+
+Image GenerateTerrainAlbedo() {
+    constexpr int width = 1536, height = 512;
+    Image image = GenImageColor(width, height, Color{72, 88, 62, 255});
+    if (image.data == nullptr) return image;
+    Color* pixels = static_cast<Color*>(image.data);
+    const float spanX = TERRAIN_MAX_X - TERRAIN_MIN_X;
+    const float spanZ = TERRAIN_MAX_Z - TERRAIN_MIN_Z;
+    for (int py = 0; py < height; ++py) {
+        const float worldZ = TERRAIN_MIN_Z + (static_cast<float>(py)/(height-1))*spanZ;
+        for (int px = 0; px < width; ++px) {
+            const float worldX = TERRAIN_MIN_X + (static_cast<float>(px)/(width-1))*spanX;
+            const float noise = SurfaceNoise(worldX, worldZ);
+            Color base;
+            Color soil;
+            switch (GetBiome(worldX)) {
+                case Biome::Emerald:
+                    base = Color{78, 100, 66, 255}; soil = Color{105, 91, 65, 255}; break;
+                case Biome::Dune:
+                    base = Color{159, 137, 96, 255}; soil = Color{128, 105, 70, 255}; break;
+                case Biome::Frost:
+                    base = Color{126, 146, 148, 255}; soil = Color{105, 111, 105, 255}; break;
+                default:
+                    base = Color{91, 70, 64, 255}; soil = Color{113, 74, 57, 255}; break;
+            }
+            const float brightness = 0.74f + noise*0.56f;
+            Color color = Color{
+                static_cast<unsigned char>(ClampF(base.r*brightness, 0, 255)),
+                static_cast<unsigned char>(ClampF(base.g*brightness, 0, 255)),
+                static_cast<unsigned char>(ClampF(base.b*brightness, 0, 255)), 255
+            };
+            const float trailCenter = 1.15f*std::sin(worldX*0.034f) + 0.45f*std::sin(worldX*0.081f);
+            const float trailDistance = std::fabs(worldZ - trailCenter);
+            const float trail = 0.88f*(1.0f - ClampF((trailDistance - 1.35f)/2.2f, 0.0f, 1.0f));
+            color = BlendColor(color, soil, trail);
+            const float rockNoise = 0.5f + 0.5f*std::sin(worldX*0.18f + std::sin(worldZ*0.21f))*std::cos(worldZ*0.16f-worldX*0.035f);
+            if ((GetBiome(worldX) == Biome::Frost || GetBiome(worldX) == Biome::Ember) && rockNoise > 0.81f)
+                color = BlendColor(color, Color{76, 77, 76, 255}, (rockNoise-0.81f)*1.65f);
+            const float grit = (noise - 0.5f)*20.0f;
+            color.r = static_cast<unsigned char>(ClampF(color.r + grit, 0, 255));
+            color.g = static_cast<unsigned char>(ClampF(color.g + grit*0.9f, 0, 255));
+            color.b = static_cast<unsigned char>(ClampF(color.b + grit*0.8f, 0, 255));
+            pixels[py*width + px] = color;
+        }
+    }
+    return image;
+}
+
+void LoadProceduralTerrain() {
+    if (terrainReady) return;
+    constexpr int columns = 280, rows = 120;
+    Mesh mesh = {};
+    mesh.vertexCount = columns*rows;
+    mesh.triangleCount = (columns-1)*(rows-1)*2;
+    mesh.vertices = static_cast<float*>(MemAlloc(static_cast<unsigned int>(mesh.vertexCount*3*sizeof(float))));
+    mesh.texcoords = static_cast<float*>(MemAlloc(static_cast<unsigned int>(mesh.vertexCount*2*sizeof(float))));
+    mesh.normals = static_cast<float*>(MemAlloc(static_cast<unsigned int>(mesh.vertexCount*3*sizeof(float))));
+    mesh.indices = static_cast<unsigned short*>(MemAlloc(static_cast<unsigned int>(mesh.triangleCount*3*sizeof(unsigned short))));
+    if (mesh.vertices == nullptr || mesh.texcoords == nullptr || mesh.normals == nullptr || mesh.indices == nullptr) {
+        if (mesh.vertices) MemFree(mesh.vertices);
+        if (mesh.texcoords) MemFree(mesh.texcoords);
+        if (mesh.normals) MemFree(mesh.normals);
+        if (mesh.indices) MemFree(mesh.indices);
+        TraceLog(LOG_ERROR, "Could not allocate the 3D terrain mesh.");
+        return;
+    }
+    const float stepX = (TERRAIN_MAX_X - TERRAIN_MIN_X)/(columns-1);
+    const float stepZ = (TERRAIN_MAX_Z - TERRAIN_MIN_Z)/(rows-1);
+    for (int row = 0; row < rows; ++row) {
+        const float z = TERRAIN_MIN_Z + row*stepZ;
+        for (int col = 0; col < columns; ++col) {
+            const float x = TERRAIN_MIN_X + col*stepX;
+            const float y = TerrainHeightAt(x, z);
+            const int i = row*columns + col;
+            mesh.vertices[i*3] = x;
+            mesh.vertices[i*3+1] = y;
+            mesh.vertices[i*3+2] = z;
+            mesh.texcoords[i*2] = static_cast<float>(col)/(columns-1);
+            mesh.texcoords[i*2+1] = static_cast<float>(row)/(rows-1);
+            const float dx = (TerrainHeightAt(x+0.25f, z)-TerrainHeightAt(x-0.25f, z))*2.0f;
+            const float dz = (TerrainHeightAt(x, z+0.25f)-TerrainHeightAt(x, z-0.25f))*2.0f;
+            const Vector3 normal = Vector3Normalize(V3(-dx, 1.0f, -dz));
+            mesh.normals[i*3] = normal.x;
+            mesh.normals[i*3+1] = normal.y;
+            mesh.normals[i*3+2] = normal.z;
+        }
+    }
+    int tri = 0;
+    for (int row = 0; row < rows-1; ++row) {
+        for (int col = 0; col < columns-1; ++col) {
+            const unsigned short a = static_cast<unsigned short>(row*columns + col);
+            const unsigned short b = static_cast<unsigned short>((row+1)*columns + col);
+            const unsigned short c = static_cast<unsigned short>(row*columns + col + 1);
+            const unsigned short d = static_cast<unsigned short>((row+1)*columns + col + 1);
+            mesh.indices[tri++] = a; mesh.indices[tri++] = b; mesh.indices[tri++] = c;
+            mesh.indices[tri++] = c; mesh.indices[tri++] = b; mesh.indices[tri++] = d;
+        }
+    }
+    UploadMesh(&mesh, false);
+    terrainModel = LoadModelFromMesh(mesh);
+    Image albedo = GenerateTerrainAlbedo();
+    if (albedo.data != nullptr) {
+        terrainTexture = LoadTextureFromImage(albedo);
+        UnloadImage(albedo);
+        if (terrainModel.materialCount > 0) {
+            terrainModel.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = terrainTexture;
+            terrainModel.materials[0].maps[MATERIAL_MAP_ALBEDO].color = WHITE;
+        }
+        SetTextureFilter(terrainTexture, TEXTURE_FILTER_TRILINEAR);
+    }
+    fallbackRockModel = LoadModelFromMesh(GenMeshSphere(1.0f, 9, 7));
+    fallbackRockReady = fallbackRockModel.meshCount > 0;
+    terrainReady = terrainModel.meshCount > 0;
+    TraceLog(LOG_INFO, "3D terrain ready: %s, %i vertices, textured biome ground",
+             terrainReady ? "mesh loaded" : "procedural fallback", mesh.vertexCount);
+}
+
+void UnloadProceduralTerrain() {
+    if (terrainReady) {
+        // This texture is owned separately so detach it before unloading the model.
+        if (terrainModel.materialCount > 0)
+            terrainModel.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = Texture2D{};
+        UnloadModel(terrainModel);
+    }
+    if (terrainTexture.id > 0) UnloadTexture(terrainTexture);
+    if (fallbackRockReady) UnloadModel(fallbackRockModel);
+    terrainModel = Model{};
+    terrainTexture = Texture2D{};
+    fallbackRockModel = Model{};
+    terrainReady = false;
+    fallbackRockReady = false;
+}
+
 Color GroundColor(Biome b, int variation) {
     const int n = variation % 3;
     switch (b) {
@@ -371,29 +556,31 @@ void MakeWorld() {
     for (int i = 0; i < 155; ++i) {
         const float x = static_cast<float>(GetRandomValue(-35, 236));
         const float z = static_cast<float>(GetRandomValue(-55, 55));
-        if (std::fabs(z) < 5.5f && (x > -25 && x < 225)) continue; // leave a readable travel corridor
+        if (std::fabs(z) < 5.5f && (x > -25 && x < 225)) continue;
         const float scale = static_cast<float>(GetRandomValue(70, 155)) / 100.0f;
         const int kindRoll = GetRandomValue(0, 99);
         int kind = kindRoll < 50 ? 0 : (kindRoll < 76 ? 1 : (kindRoll < 88 ? 2 : 4));
         if (x > 48 && x < 112 && kind == 0) kind = 1;
         if (x > 112 && x < 174 && kind == 0) kind = 3;
-        props.push_back({ V3(x, 0.0f, z), scale, kind, GetRandomValue(0, 3) });
+        props.push_back({ V3(x, TerrainHeightAt(x, z), z), scale, kind, GetRandomValue(0, 3) });
     }
     for (int i = 0; i < 13; ++i) {
         const float x = static_cast<float>(GetRandomValue(-8, 228));
         const float z = static_cast<float>(GetRandomValue(-35, 35));
-        monsters.push_back({ V3(x, 0.0f, z), V3(x, 0.0f, z),
+        const float groundY = TerrainHeightAt(x, z);
+        monsters.push_back({ V3(x, groundY, z), V3(x, groundY, z),
                              48.0f, 48.0f, 1.7f + GetRandomValue(0, 12)/10.0f,
                              static_cast<float>(GetRandomValue(3, 7))/2.0f, 0.0f, true, i%4 });
     }
     for (int i=0; i<BOSS_COUNT; ++i) {
+        bosses[i].position.y = TerrainHeightAt(bosses[i].position.x, bosses[i].position.z);
         bosses[i].health = bosses[i].maxHealth;
         bosses[i].alive = true;
         bosses[i].attackClock = 1.6f + i*0.35f;
         bosses[i].phase = 0.0f;
     }
     player = Player{};
-    player.position = V3(-16.0f, 0.0f, 0.0f);
+    player.position = V3(-16.0f, TerrainHeightAt(-16.0f, 0.0f), 0.0f);
     currentBoss = 0;
     missionToast = "EXPLORE THE WILDS";
     missionToastClock = 4.5f;
@@ -592,51 +779,35 @@ float ComputeModelGroundOffset(Model model) {
 }
 
 void LoadOptionalNatureModels() {
-    // User-installed Sketchfab GLBs take priority; existing Kenney models are fallbacks.
-    natureTree = LoadOptionalModelStem("assets/3d/sketchfab_tree");
-    if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("assets/3d/sketchfab_tree_path.txt");
-    if (natureTree.meshCount == 0) natureTree = LoadOptionalModelStem("assets/3d/world_tree");
-    if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("assets/3d/world_tree_path.txt");
+    // User-installed Sketchfab GLBs replace the procedural tree/rock fallback geometry.
+    natureTree = LoadOptionalModelStem("Assets/3d/sketchfab_tree");
+    if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("Assets/3d/sketchfab_tree_path.txt");
     treeModelReady = natureTree.meshCount > 0;
 
-    natureRock = LoadOptionalModelStem("assets/3d/sketchfab_rock");
-    if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("assets/3d/sketchfab_rock_path.txt");
-    if (natureRock.meshCount == 0) natureRock = LoadOptionalModelStem("assets/3d/world_rock");
-    if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("assets/3d/world_rock_path.txt");
+    natureRock = LoadOptionalModelStem("Assets/3d/sketchfab_rock");
+    if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("Assets/3d/sketchfab_rock_path.txt");
     rockModelReady = natureRock.meshCount > 0;
 
-    // Optional user-installed Sketchfab models override the bundled CC0 defaults.
+    // Optional user-installed Sketchfab models override the procedural character fallback.
     std::string heroModelPath;
-    sketchfabHeroModel = LoadOptionalModelStem("assets/3d/sketchfab_hero", &heroModelPath);
+    sketchfabHeroModel = LoadOptionalModelStem("Assets/3d/sketchfab_hero", &heroModelPath);
     if (sketchfabHeroModel.meshCount == 0)
-        sketchfabHeroModel = LoadModelFromManifest("assets/3d/sketchfab_hero_path.txt", &heroModelPath);
+        sketchfabHeroModel = LoadModelFromManifest("Assets/3d/sketchfab_hero_path.txt", &heroModelPath);
     heroModelFacesPositiveZ = false;
-    if (sketchfabHeroModel.meshCount == 0) {
-        sketchfabHeroModel = LoadOptionalModelStem("assets/3d/cc0_hero", &heroModelPath);
-        heroModelFacesPositiveZ = sketchfabHeroModel.meshCount > 0;
-    }
     sketchfabHeroReady = sketchfabHeroModel.meshCount > 0;
 
     std::string monsterModelPath;
-    sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/sketchfab_monster", &monsterModelPath);
+    sketchfabMonsterModel = LoadOptionalModelStem("Assets/3d/sketchfab_monster", &monsterModelPath);
     if (sketchfabMonsterModel.meshCount == 0)
-        sketchfabMonsterModel = LoadModelFromManifest("assets/3d/sketchfab_monster_path.txt", &monsterModelPath);
+        sketchfabMonsterModel = LoadModelFromManifest("Assets/3d/sketchfab_monster_path.txt", &monsterModelPath);
     monsterModelFacesPositiveZ = false;
-    if (sketchfabMonsterModel.meshCount == 0) {
-        sketchfabMonsterModel = LoadOptionalModelStem("assets/3d/cc0_monster", &monsterModelPath);
-        monsterModelFacesPositiveZ = sketchfabMonsterModel.meshCount > 0;
-    }
     sketchfabMonsterReady = sketchfabMonsterModel.meshCount > 0;
 
     std::string bossModelPath;
-    sketchfabBossModel = LoadOptionalModelStem("assets/3d/sketchfab_boss", &bossModelPath);
+    sketchfabBossModel = LoadOptionalModelStem("Assets/3d/sketchfab_boss", &bossModelPath);
     if (sketchfabBossModel.meshCount == 0)
-        sketchfabBossModel = LoadModelFromManifest("assets/3d/sketchfab_boss_path.txt", &bossModelPath);
+        sketchfabBossModel = LoadModelFromManifest("Assets/3d/sketchfab_boss_path.txt", &bossModelPath);
     bossModelFacesPositiveZ = false;
-    if (sketchfabBossModel.meshCount == 0) {
-        sketchfabBossModel = LoadOptionalModelStem("assets/3d/cc0_boss", &bossModelPath);
-        bossModelFacesPositiveZ = sketchfabBossModel.meshCount > 0;
-    }
     sketchfabBossReady = sketchfabBossModel.meshCount > 0;
 
     if (sketchfabHeroReady) {
@@ -694,72 +865,78 @@ void InitCamera() {
 
 void DrawTree(const Prop& p) {
     const float s = p.scale;
+    const float ground = p.position.y;
     if (treeModelReady) {
-        DrawModel(natureTree, V3(p.position.x, 0.0f, p.position.z), 4.0f*s, WHITE);
+        DrawModel(natureTree, V3(p.position.x, ground, p.position.z), 4.0f*s, WHITE);
         return;
     }
     const Biome b = GetBiome(p.position.x);
-    const Color leaves = b == Biome::Ember ? Color{ 125, 67, 45, 255 }
-                       : (b == Biome::Frost ? Color{ 99, 157, 177, 255 }
-                       : (b == Biome::Dune ? Color{ 149, 127, 71, 255 } : Color{ 44, 94, 57, 255 }));
+    const Color leaves = b == Biome::Ember ? Color{ 116, 69, 52, 255 }
+                       : (b == Biome::Frost ? Color{ 98, 137, 145, 255 }
+                       : (b == Biome::Dune ? Color{ 143, 126, 87, 255 } : Color{ 50, 86, 48, 255 }));
     const float trunkH = (p.kind == 3 ? 2.1f : 3.0f)*s;
-    DrawCylinder(V3(p.position.x, trunkH*0.5f, p.position.z), 0.24f*s, 0.36f*s, trunkH, 7,
-                 p.kind == 3 ? Color{ 80, 61, 53, 255 } : BROWN);
+    DrawCylinder(V3(p.position.x, ground+trunkH*0.5f, p.position.z), 0.19f*s, 0.29f*s, trunkH, 9,
+                 p.kind == 3 ? Color{ 74, 57, 48, 255 } : Color{ 83, 65, 45, 255 });
     if (p.kind == 3) {
-        DrawCylinderEx(V3(p.position.x, trunkH, p.position.z),
-                       V3(p.position.x+0.9f*s, trunkH+0.65f*s, p.position.z+0.15f*s),
-                       0.13f*s, 0.035f*s, 5, Color{ 93, 69, 59, 255 });
-        DrawCylinderEx(V3(p.position.x, trunkH*0.75f, p.position.z),
-                       V3(p.position.x-0.8f*s, trunkH+0.45f*s, p.position.z-0.2f*s),
-                       0.12f*s, 0.025f*s, 5, Color{ 93, 69, 59, 255 });
+        DrawCylinderEx(V3(p.position.x, ground+trunkH, p.position.z),
+                       V3(p.position.x+0.9f*s, ground+trunkH+0.65f*s, p.position.z+0.15f*s),
+                       0.13f*s, 0.035f*s, 5, Color{ 86, 68, 56, 255 });
+        DrawCylinderEx(V3(p.position.x, ground+trunkH*0.75f, p.position.z),
+                       V3(p.position.x-0.8f*s, ground+trunkH+0.45f*s, p.position.z-0.2f*s),
+                       0.12f*s, 0.025f*s, 5, Color{ 86, 68, 56, 255 });
         return;
     }
-    DrawSphere(V3(p.position.x, trunkH+0.5f*s, p.position.z), 1.05f*s, leaves);
-    DrawSphere(V3(p.position.x-0.55f*s, trunkH+0.05f*s, p.position.z+0.18f*s), 0.77f*s, leaves);
-    DrawSphere(V3(p.position.x+0.58f*s, trunkH+0.12f*s, p.position.z-0.08f*s), 0.80f*s, leaves);
+    // Tapered, layered tree crowns replace the old oversized sphere clusters.
+    DrawCylinder(V3(p.position.x, ground+trunkH+0.34f*s, p.position.z),
+                 0.025f*s, 0.78f*s, 1.45f*s, 9, leaves);
+    DrawCylinder(V3(p.position.x, ground+trunkH+1.08f*s, p.position.z),
+                 0.015f*s, 0.60f*s, 1.35f*s, 9, BlendColor(leaves, WHITE, 0.06f));
+    DrawCylinder(V3(p.position.x, ground+trunkH+1.68f*s, p.position.z),
+                 0.0f, 0.40f*s, 1.05f*s, 9, leaves);
+    DrawSphere(V3(p.position.x, ground+trunkH+0.22f*s, p.position.z), 0.23f*s, BlendColor(leaves, WHITE, 0.035f));
 }
 void DrawRock(const Prop& p) {
     const float s = p.scale;
     if (rockModelReady) {
-        DrawModel(natureRock, V3(p.position.x, 0.15f, p.position.z), 4.2f*s, WHITE);
+        DrawModel(natureRock, V3(p.position.x, p.position.y, p.position.z), 4.2f*s, WHITE);
         return;
     }
-    const Color col = GetBiome(p.position.x) == Biome::Frost ? Color{ 150, 177, 185, 255 }
-                    : (GetBiome(p.position.x) == Biome::Ember ? Color{ 97, 69, 64, 255 }
-                    : Color{ 104, 112, 109, 255 });
-    DrawCube(V3(p.position.x, 0.4f*s, p.position.z), 1.45f*s, 0.85f*s, 1.2f*s, col);
-    DrawSphere(V3(p.position.x+0.22f*s, 0.55f*s, p.position.z-0.08f*s), 0.53f*s, col);
+    const Color col = GetBiome(p.position.x) == Biome::Frost ? Color{ 133, 151, 151, 255 }
+                    : (GetBiome(p.position.x) == Biome::Ember ? Color{ 91, 70, 65, 255 }
+                    : Color{ 105, 108, 96, 255 });
+    if (fallbackRockReady) {
+        const Vector3 scale = V3(1.15f*s, 0.46f*s, 0.88f*s);
+        DrawModelEx(fallbackRockModel, V3(p.position.x, p.position.y+0.23f*s, p.position.z),
+                    V3(0,1,0), static_cast<float>(p.variant*37), scale, col);
+    } else {
+        DrawSphere(V3(p.position.x, p.position.y+0.22f*s, p.position.z), 0.5f*s, col);
+    }
 }
 void DrawEnvironment() {
-    const float tile = 16.0f;
-    for (int ix = -3; ix < 16; ++ix) {
-        for (int iz = -4; iz < 4; ++iz) {
-            const float x = ix*tile + tile*0.5f;
-            const float z = iz*tile + tile*0.5f;
-            // Flat terrain tiles remove the chunky cube edges and harsh checkerboard look.
-            DrawPlane(V3(x, -0.012f, z), Vector2{ tile, tile }, GroundColor(GetBiome(x), 1));
+    if (terrainReady) DrawModel(terrainModel, V3(0.0f, 0.0f, 0.0f), 1.0f, WHITE);
+    else {
+        // Safe fallback if texture/mesh allocation fails at startup.
+        for (int ix = -3; ix < 16; ++ix) {
+            for (int iz = -4; iz < 4; ++iz) {
+                const float x = ix*16.0f + 8.0f;
+                const float z = iz*16.0f + 8.0f;
+                DrawPlane(V3(x, 0.0f, z), Vector2{16.0f, 16.0f}, GroundColor(GetBiome(x), 1));
+            }
         }
     }
-    // Soft trails point toward the next mission while keeping the map open for exploration.
-    for (float x=-32.0f; x<238.0f; x+=4.0f) {
-        const Biome b = GetBiome(x);
-        const Color trail = b == Biome::Dune ? Color{ 214, 184, 125, 255 }
-                          : (b == Biome::Frost ? Color{ 183, 212, 220, 255 }
-                          : (b == Biome::Ember ? Color{ 149, 93, 68, 255 } : Color{ 90, 132, 75, 255 }));
-        DrawCube(V3(x, 0.015f, 0.0f), 3.9f, 0.025f, 4.0f, trail);
-    }
+    // The broad dirt travel trail is painted into the terrain's 1536x512 albedo map.
     for (const Prop& p : props) {
         if (DistXZ(p.position, player.position) > 84.0f) continue;
         switch (p.kind) {
             case 0: case 3: DrawTree(p); break;
             case 1: DrawRock(p); break;
             case 2:
-                DrawCylinder(V3(p.position.x, 0.8f*p.scale, p.position.z), 0.14f*p.scale, 0.36f*p.scale,
+                DrawCylinder(V3(p.position.x, p.position.y+0.8f*p.scale, p.position.z), 0.14f*p.scale, 0.36f*p.scale,
                              1.6f*p.scale, 5, GetBiome(p.position.x)==Biome::Frost ? C_CYAN : C_VIOLET);
-                DrawSphere(V3(p.position.x, 1.75f*p.scale, p.position.z), 0.28f*p.scale, C_CYAN);
+                DrawSphere(V3(p.position.x, p.position.y+1.75f*p.scale, p.position.z), 0.28f*p.scale, C_CYAN);
                 break;
             default:
-                DrawSphere(V3(p.position.x, 0.32f*p.scale, p.position.z), 0.52f*p.scale,
+                DrawSphere(V3(p.position.x, p.position.y+0.32f*p.scale, p.position.z), 0.52f*p.scale,
                            GetBiome(p.position.x)==Biome::Ember ? Color{ 148, 69, 54, 255 } : Color{ 47, 127, 73, 255 });
                 break;
         }
@@ -769,17 +946,17 @@ void DrawEnvironment() {
         const Vector3 b = bosses[i].position;
         const bool unlocked = (i==0 ? player.kills >= 3 : !bosses[i-1].alive);
         const Color marker = unlocked ? BossColor(i) : Color{ 110, 119, 137, 255 };
-        DrawCylinder(V3(b.x, 0.17f, b.z), 1.25f, 1.25f, 0.34f, 12, Color{ 35, 40, 55, 255 });
-        DrawCylinder(V3(b.x, 0.34f, b.z), 0.83f, 0.83f, 0.18f, 12, marker);
-        DrawCylinderEx(V3(b.x, 0.8f, b.z), V3(b.x, 3.3f + std::sin(worldClock*2.0f+i)*0.25f, b.z),
+        DrawCylinder(V3(b.x, b.y+0.17f, b.z), 1.25f, 1.25f, 0.34f, 12, Color{ 35, 40, 55, 255 });
+        DrawCylinder(V3(b.x, b.y+0.34f, b.z), 0.83f, 0.83f, 0.18f, 12, marker);
+        DrawCylinderEx(V3(b.x, b.y+0.8f, b.z), V3(b.x, b.y+3.3f + std::sin(worldClock*2.0f+i)*0.25f, b.z),
                        0.06f, 0.015f, 7, WithAlpha(marker, 160));
-        DrawSphere(V3(b.x, 3.45f + std::sin(worldClock*2.0f+i)*0.25f, b.z), 0.2f, marker);
+        DrawSphere(V3(b.x, b.y+3.45f + std::sin(worldClock*2.0f+i)*0.25f, b.z), 0.2f, marker);
     }
 }
 
 void DrawPlayerModel() {
     const Vector3 p = player.position;
-    DrawCircle3D(V3(p.x, 0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
+    DrawCircle3D(V3(p.x, TerrainHeightAt(p.x, p.z)+0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                  WithAlpha(Color{ 14, 22, 25, 255 }, 105));
     if (sketchfabHeroReady) {
         const int heroAnimation = ChooseCharacterAnimation(
@@ -929,7 +1106,7 @@ void DrawWorldEntities() {
     }
     for (const Monster& m : monsters) {
         if (!m.alive || DistXZ(player.position, m.position)>75.0f) continue;
-        DrawCircle3D(V3(m.position.x, 0.016f, m.position.z), 0.48f, V3(1.0f, 0.0f, 0.0f), 90.0f,
+        DrawCircle3D(V3(m.position.x, m.position.y+0.016f, m.position.z), 0.48f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                      WithAlpha(Color{ 12, 18, 20, 255 }, 95));
         DrawMonsterModel(m.position, m.kind, m.phase, 0.76f, MonsterColor(m.kind));
         DrawHealthBar3D(V3(m.position.x, 2.35f, m.position.z), m.health, m.maxHealth, 1.15f, C_RED);
@@ -1120,10 +1297,11 @@ void UpdatePlayer(float dt) {
     }
     player.velocity.y -= 20.0f*dt;
     player.position.y += player.velocity.y*dt;
-    if (player.position.y <= 0.0f) {
+    const float groundY = TerrainHeightAt(player.position.x, player.position.z);
+    if (player.position.y <= groundY) {
         if (!player.grounded && player.velocity.y < -5.0f)
-            SpawnBurst(V3(player.position.x, 0.12f, player.position.z), Color{ 190, 194, 161, 255 }, 8, 1.4f);
-        player.position.y = 0.0f;
+            SpawnBurst(V3(player.position.x, groundY+0.12f, player.position.z), Color{ 190, 194, 161, 255 }, 8, 1.4f);
+        player.position.y = groundY;
         player.velocity.y = 0.0f;
         player.grounded = true;
     }
@@ -1181,6 +1359,7 @@ void UpdateEnemies(float dt) {
         }
         m.position.x = ClampF(m.position.x, WORLD_MIN_X, WORLD_MAX_X);
         m.position.z = ClampF(m.position.z, -WORLD_HALF_Z+1.0f, WORLD_HALF_Z-1.0f);
+        m.position.y = TerrainHeightAt(m.position.x, m.position.z);
         if (distance < 1.8f && m.attackClock <= 0.0f) {
             m.attackClock = 1.55f;
             AddDamageToPlayer(8.0f);
@@ -1200,6 +1379,7 @@ void UpdateEnemies(float dt) {
             b.position.x += dir.x*b.speed*dt;
             b.position.z += dir.z*b.speed*dt;
         }
+        b.position.y = TerrainHeightAt(b.position.x, b.position.z);
         if (distance < 3.4f && b.attackClock <= 0.0f) {
             b.attackClock = 2.1f + i*0.18f;
             AddDamageToPlayer(14.0f + i*3.0f);
@@ -1370,6 +1550,7 @@ int main() {
 #endif
     SetTargetFPS(60);
     InitAudio();
+    LoadProceduralTerrain();
     MakeWorld();
     InitCamera();
     LoadOptionalNatureModels();
@@ -1408,7 +1589,7 @@ int main() {
             if (player.rebirthClock <= 0.0f) {
                 player.health = player.maxHealth*0.72f;
                 player.position.x = ClampF(player.position.x-6.0f,WORLD_MIN_X,WORLD_MAX_X);
-                player.position.y=0.0f;
+                player.position.y = TerrainHeightAt(player.position.x, player.position.z);
                 player.velocity=V3(0,0,0);
                 player.invulnerable=1.7f;
                 screen=Screen::Playing;
@@ -1460,6 +1641,7 @@ int main() {
     }
 
     UnloadOptionalNatureModels();
+    UnloadProceduralTerrain();
     CloseAudio();
     CloseWindow();
     return 0;
