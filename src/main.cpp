@@ -42,7 +42,7 @@ struct AnimationClips {
 struct Actor {
     Model model = {};
     ModelAnimation* animations = nullptr;
-    unsigned int animationCount = 0;
+    int animationCount = 0;
     AnimationClips clips = {};
     Vector3 position = { 0.0f, 0.0f, 0.0f };
     Vector3 velocity = { 0.0f, 0.0f, 0.0f };
@@ -171,7 +171,7 @@ std::string Lower(std::string text) {
 
 int FindClip(const Actor& actor, const char* keyword) {
     const std::string wanted = Lower(keyword);
-    for (unsigned int i = 0; i < actor.animationCount; ++i) {
+    for (int i = 0; i < actor.animationCount; ++i) {
         if (Lower(actor.animations[i].name).find(wanted) != std::string::npos) {
             return static_cast<int>(i);
         }
@@ -231,17 +231,17 @@ void SetToast(const char* message, float seconds = 3.0f) {
 
 void SelectAndApplyAnimation(Actor& actor, int clip, float dt, bool loop = true) {
     if (!actor.modelReady || actor.animations == nullptr || actor.animationCount == 0 ||
-        clip < 0 || static_cast<unsigned int>(clip) >= actor.animationCount) return;
+        clip < 0 || clip >= actor.animationCount) return;
 
     if (actor.currentAnimation != clip) {
         actor.currentAnimation = clip;
         actor.animationClock = 0.0f;
     }
     actor.animationClock += dt;
-    const int frames = std::max(1, actor.animations[static_cast<unsigned int>(clip)].frameCount);
+    const int frames = std::max(1, actor.animations[clip].keyframeCount);
     int frame = static_cast<int>(actor.animationClock * 24.0f);
     frame = loop ? frame % frames : std::min(frame, frames - 1);
-    UpdateModelAnimation(actor.model, actor.animations[static_cast<unsigned int>(clip)], frame);
+    UpdateModelAnimation(actor.model, actor.animations[clip], frame);
 }
 
 int CurrentClip(const Actor& actor, bool moving, bool running, bool jumping, bool attacking, bool hurt) {
