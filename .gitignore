@@ -1,3 +1,29 @@
+# Unity generated content
+/Library/
+/Temp/
+/Obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/.vs/
+*.csproj
+*.sln
+*.suo
+*.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+/NativeCore/build/
+# Locally built native plug-ins are generated per target and not stored in Git
+/Assets/Plugins/x86_64/*.dll
+/Assets/Plugins/Android/arm64-v8a/*.so
+# Legacy / Android outputs
 /build/
 /cmake-build-*/
 /android/.gradle/
@@ -5,5 +31,7 @@
 /android/app/build/
 *.exe
 *.dll
+*.so
+*.dylib
 *.apk
 *.aab
