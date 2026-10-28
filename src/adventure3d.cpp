@@ -1118,6 +1118,7 @@ void DrawPlayerModel() {
         DrawCylinderEx(V3(hand.x, hand.y-0.12f, hand.z), V3(hand.x, hand.y+0.12f, hand.z),
                        0.07f, 0.07f, 6, Color{100, 63, 42, 255});
         rlPopMatrix();
+    }
     if (player.attackClock > 0.0f) {
         DrawCylinderEx(V3(p.x+player.facing.x*0.55f, p.y+1.0f, p.z+player.facing.z*0.55f),
                        V3(p.x+player.facing.x*2.5f, p.y+1.0f, p.z+player.facing.z*2.5f),
