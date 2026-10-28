@@ -43,8 +43,7 @@ public static class WildboundProjectSetup
         PlayerSettings.defaultScreenWidth = 1280;
         PlayerSettings.defaultScreenHeight = 720;
         PlayerSettings.runInBackground = true;
-        PlayerSettings.activeInputHandler = ActiveInputHandler.InputManager;
-        PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.workrcs.wildbound");
+        PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.workrcs.tinytrails");
         PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
         PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
