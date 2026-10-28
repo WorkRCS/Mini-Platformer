@@ -41,6 +41,7 @@ jobs:
           mkdir -p dist
           cp build/TinyTrails.exe dist/
           if [ -d build/Assets/3d ]; then mkdir -p dist/Assets/3d; cp -a build/Assets/3d/. dist/Assets/3d/; fi
+          if [ -d build/Assets/textures ]; then mkdir -p dist/Assets/textures; cp -a build/Assets/textures/. dist/Assets/textures/; fi
           ldd build/TinyTrails.exe | while IFS= read -r line; do
             dep="$(printf '%s\n' "$line" | sed -nE 's/.*=> (\/[^ ]+).*/\1/p')"
             if [[ "$dep" == /ucrt64/bin/* && -f "$dep" ]]; then cp -u "$dep" dist/; fi
