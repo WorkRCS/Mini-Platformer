@@ -5,13 +5,13 @@
 ## 3D environment added
 
 - A real indexed triangle terrain mesh with rolling hills across four regions, not flat ground tiles.
-- A generated high-resolution surface texture with layered noise, grass/earth/sand/rock color variation, and a dirt trail blended into the terrain material.
-- Player movement, monsters, bosses, trees, rocks, crystals and altars now follow the sampled terrain height.
+- A higher-detail terrain albedo baked from optional Poly Haven CC0 grass, sand, snow, rock and dirt materials, with a worn trail blended into the world texture. Missing downloads gracefully fall back to generated materials.
+- Player movement, monsters, bosses, trees, rocks, crystals and altars now follow the exact rendered terrain triangles. The procedural player body, face and sword rotate with movement direction.
 - Tree shapes use layered tapered crowns; rocks use a low-poly 3D mesh instead of cubes.
 - Sketchfab GLB/glTF files can replace the hero, monster, boss, tree and rock fallback meshes.
 - VS Code tasks can configure, build, test, run and debug the C++ app. **Visual Studio is not required.**
 
-This is a stylized game environment rather than photorealistic terrain, but the ground is a real 3D mesh with an albedo texture generated at runtime and actual changes in elevation. The starter scene is visible immediately without an external asset download. Imported Sketchfab characters and props can replace the fallback meshes when you add them.
+This is still a stylized prototype rather than a finished battle-royale production, but the ground is a real 3D mesh with more natural surface materials and actual changes in elevation. CMake tries to download the 1K CC0 terrain maps from Poly Haven once at configure time; if downloads fail, the game remains playable using its built-in fallback. Imported Sketchfab characters and props can replace the fallback meshes when you add them.
 
 ## 1. Open and run from VS Code (Windows)
 

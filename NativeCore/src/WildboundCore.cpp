@@ -1,4 +1,3 @@
-#define WILDBOUND_CORE_EXPORTS
 #include "WildboundCore.h"
 #include <algorithm>
 #include <array>
