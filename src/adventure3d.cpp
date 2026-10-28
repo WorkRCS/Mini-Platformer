@@ -779,7 +779,7 @@ float ComputeModelGroundOffset(Model model) {
 }
 
 void LoadOptionalNatureModels() {
-    // User-installed Sketchfab GLBs take priority; existing Kenney models are fallbacks.
+    // User-installed Sketchfab GLBs replace the procedural tree/rock fallback geometry.
     natureTree = LoadOptionalModelStem("Assets/3d/sketchfab_tree");
     if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("Assets/3d/sketchfab_tree_path.txt");
     treeModelReady = natureTree.meshCount > 0;
@@ -788,7 +788,7 @@ void LoadOptionalNatureModels() {
     if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("Assets/3d/sketchfab_rock_path.txt");
     rockModelReady = natureRock.meshCount > 0;
 
-    // Optional user-installed Sketchfab models override the bundled CC0 defaults.
+    // Optional user-installed Sketchfab models override the procedural character fallback.
     std::string heroModelPath;
     sketchfabHeroModel = LoadOptionalModelStem("Assets/3d/sketchfab_hero", &heroModelPath);
     if (sketchfabHeroModel.meshCount == 0)
