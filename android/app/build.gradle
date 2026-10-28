@@ -3,28 +3,25 @@ plugins {
 }
 
 android {
-    namespace 'com.workrcs.tinytrails'
+    namespace 'com.workrcs.wildbound'
     compileSdk 35
     buildToolsVersion '36.0.0'
-    // Pin the NDK version used by the local SDK and CI.
     ndkVersion '27.0.12077973'
 
     sourceSets {
         main {
+            // APK asset paths are relative to the repository's lowercase assets/ folder.
             assets.srcDirs = ['../../assets']
         }
     }
 
     defaultConfig {
-        applicationId 'com.workrcs.tinytrails'
+        applicationId 'com.workrcs.wildbound'
         minSdk 24
         targetSdk 35
         versionCode 1
         versionName '0.1.0'
 
-        // This build is for the developer's own modern Android phone.
-        // Build one ABI only to avoid configuring and compiling native libraries
-        // for 32-bit ARM and x86_64 emulators that are not needed for phone testing.
         ndk {
             abiFilters 'arm64-v8a'
         }

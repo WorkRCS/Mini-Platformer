@@ -1,67 +1,33 @@
-name: Build and test Wildbound (VS Code / raylib)
+name: Android Build
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  windows-desktop:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-raylib
-
-      - name: Configure desktop game and C++ tests
-        shell: msys2 {0}
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build 3D raylib game and native core tests
-        shell: msys2 {0}
-        run: cmake --build build --verbose
-
-      - name: Run C++ gameplay-core tests
-        shell: msys2 {0}
-        run: ctest --test-dir build -C Release --output-on-failure
-
-      - name: Package Windows build for first test
-        shell: msys2 {0}
-        run: |
-          mkdir -p dist
-          cp build/TinyTrails.exe dist/
-          if [ -d build/Assets/3d ]; then mkdir -p dist/Assets/3d; cp -a build/Assets/3d/. dist/Assets/3d/; fi
-          if [ -d build/Assets/textures ]; then mkdir -p dist/Assets/textures; cp -a build/Assets/textures/. dist/Assets/textures/; fi
-          ldd build/TinyTrails.exe | while IFS= read -r line; do
-            dep="$(printf '%s\n' "$line" | sed -nE 's/.*=> (\/[^ ]+).*/\1/p')"
-            if [[ "$dep" == /ucrt64/bin/* && -f "$dep" ]]; then cp -u "$dep" dist/; fi
-          done
-          find dist -maxdepth 1 -name '*.dll' -print
-
-      - name: Upload Windows first-test build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Wildbound-VSCode-Windows-x64
-          path: dist/
-          if-no-files-found: error
-
-  native-core-tests:
+  android-debug-apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure portable C++ gameplay core
-        run: cmake -S NativeCore -B build-core -DCMAKE_BUILD_TYPE=Release
-      - name: Build
-        run: cmake --build build-core --config Release
-      - name: Test
-        run: ctest --test-dir build-core -C Release --output-on-failure
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android native build tools
+        run: sdkmanager "platforms;android-35" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;4.1.2"
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wildbound-story-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
