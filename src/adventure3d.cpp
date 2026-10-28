@@ -974,7 +974,8 @@ void InitCamera() {
 
 void DrawTree(const Prop& p) {
     const float s = p.scale;
-    const float ground = p.position.y;
+    // Slightly bury the root to hide tiny terrain-triangle seams on slopes.
+    const float ground = p.position.y - 0.08f*s;
     if (treeModelReady) {
         DrawModel(natureTree, V3(p.position.x, ground + treeGroundOffset*4.0f*s, p.position.z), 4.0f*s, WHITE);
         return;
