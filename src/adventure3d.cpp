@@ -313,7 +313,7 @@ Color ModulateColor(Color color, float strength) {
 }
 
 Image GenerateTerrainAlbedo() {
-    constexpr int width = 1536, height = 512;
+    constexpr int width = 3072, height = 1536;
     Image grass = LoadOptionalGroundTexture("grass_ground_diff_1k.jpg");
     Image sand = LoadOptionalGroundTexture("sand_01_diff_1k.jpg");
     Image snow = LoadOptionalGroundTexture("snow_01_diff_1k.jpg");
@@ -1033,7 +1033,7 @@ void DrawEnvironment() {
             }
         }
     }
-    // The broad dirt travel trail is painted into the terrain's 1536x512 albedo map.
+    // The broad dirt travel trail is painted into the terrain's 3072x1536 albedo map.
     for (const Prop& p : props) {
         if (DistXZ(p.position, player.position) > 84.0f) continue;
         switch (p.kind) {
