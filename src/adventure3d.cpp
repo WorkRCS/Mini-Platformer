@@ -1,5 +1,6 @@
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 
 #include <algorithm>
 #include <cctype>
@@ -138,6 +139,7 @@ struct CharacterAnimationSet {
 };
 
 Model natureTree = {};
+float treeGroundOffset = 0.0f;
 Model natureRock = {};
 Model sketchfabHeroModel = {};
 Model sketchfabMonsterModel = {};
@@ -227,6 +229,39 @@ float TerrainHeightAt(float x, float z) {
     return std::max(0.25f, height);
 }
 
+
+float TerrainSurfaceHeightAt(float x, float z) {
+    // Sample the same two triangles that are uploaded to the GPU. Sampling the
+    // analytic function directly makes props float above (or sink into) the
+    // coarser rendered mesh between its vertices.
+    constexpr int columns = 280, rows = 120;
+    const float stepX = (TERRAIN_MAX_X - TERRAIN_MIN_X)/(columns-1);
+    const float stepZ = (TERRAIN_MAX_Z - TERRAIN_MIN_Z)/(rows-1);
+    x = ClampF(x, TERRAIN_MIN_X, TERRAIN_MAX_X);
+    z = ClampF(z, TERRAIN_MIN_Z, TERRAIN_MAX_Z);
+
+    const float gridX = (x - TERRAIN_MIN_X)/stepX;
+    const float gridZ = (z - TERRAIN_MIN_Z)/stepZ;
+    const int col = std::min(columns-2, std::max(0, static_cast<int>(std::floor(gridX))));
+    const int row = std::min(rows-2, std::max(0, static_cast<int>(std::floor(gridZ))));
+    const float u = ClampF(gridX - col, 0.0f, 1.0f);
+    const float v = ClampF(gridZ - row, 0.0f, 1.0f);
+
+    const float x0 = TERRAIN_MIN_X + col*stepX;
+    const float x1 = x0 + stepX;
+    const float z0 = TERRAIN_MIN_Z + row*stepZ;
+    const float z1 = z0 + stepZ;
+    const float a = TerrainHeightAt(x0, z0);
+    const float b = TerrainHeightAt(x0, z1);
+    const float c = TerrainHeightAt(x1, z0);
+    const float d = TerrainHeightAt(x1, z1);
+
+    // Uploaded indices are (a,b,c) and (c,b,d), with the diagonal u+v=1.
+    if (u + v <= 1.0f)
+        return a*(1.0f-u-v) + b*v + c*u;
+    return c*(1.0f-v) + b*(1.0f-u) + d*(u+v-1.0f);
+}
+
 Color BlendColor(Color a, Color b, float t) {
     t = ClampF(t, 0.0f, 1.0f);
     return Color{
@@ -243,10 +278,57 @@ float SurfaceNoise(float x, float z) {
                 + 0.035f*std::cos(x*2.8f - z*2.3f);
 }
 
+
+// Ground albedo tiles are CC0 assets downloaded from Poly Haven by CMake.
+// If a download is unavailable, the game continues with its built-in material.
+std::string ResolveAssetPath(const std::string& requestedPath);
+
+Image LoadOptionalGroundTexture(const char* filename) {
+    const std::string requested = std::string("Assets/textures/") + filename;
+    const std::string path = ResolveAssetPath(requested);
+    if (!FileExists(path.c_str())) return Image{};
+    Image image = LoadImage(path.c_str());
+    if (image.data != nullptr && image.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8)
+        ImageFormat(&image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    if (image.data != nullptr)
+        TraceLog(LOG_INFO, "Loaded CC0 terrain material: %s", path.c_str());
+    return image;
+}
+
+Color SampleTiledAlbedo(const Image& image, float u, float v, Color fallback) {
+    if (image.data == nullptr || image.width <= 0 || image.height <= 0) return fallback;
+    const int rawX = static_cast<int>(std::floor(u*image.width));
+    const int rawY = static_cast<int>(std::floor(v*image.height));
+    const int px = ((rawX % image.width) + image.width) % image.width;
+    const int py = ((rawY % image.height) + image.height) % image.height;
+    const Color* pixels = static_cast<const Color*>(image.data);
+    return pixels[py*image.width + px];
+}
+
+Color ModulateColor(Color color, float strength) {
+    color.r = static_cast<unsigned char>(ClampF(color.r*strength, 0, 255));
+    color.g = static_cast<unsigned char>(ClampF(color.g*strength, 0, 255));
+    color.b = static_cast<unsigned char>(ClampF(color.b*strength, 0, 255));
+    return color;
+}
+
 Image GenerateTerrainAlbedo() {
     constexpr int width = 1536, height = 512;
+    Image grass = LoadOptionalGroundTexture("grass_ground_diff_1k.jpg");
+    Image sand = LoadOptionalGroundTexture("sand_01_diff_1k.jpg");
+    Image snow = LoadOptionalGroundTexture("snow_01_diff_1k.jpg");
+    Image rock = LoadOptionalGroundTexture("rock_ground_02_diff_1k.jpg");
+    Image dirt = LoadOptionalGroundTexture("dirt_diff_1k.jpg");
+
     Image image = GenImageColor(width, height, Color{72, 88, 62, 255});
-    if (image.data == nullptr) return image;
+    if (image.data == nullptr) {
+        if (grass.data) UnloadImage(grass);
+        if (sand.data) UnloadImage(sand);
+        if (snow.data) UnloadImage(snow);
+        if (rock.data) UnloadImage(rock);
+        if (dirt.data) UnloadImage(dirt);
+        return image;
+    }
     Color* pixels = static_cast<Color*>(image.data);
     const float spanX = TERRAIN_MAX_X - TERRAIN_MIN_X;
     const float spanZ = TERRAIN_MAX_Z - TERRAIN_MIN_Z;
@@ -255,38 +337,62 @@ Image GenerateTerrainAlbedo() {
         for (int px = 0; px < width; ++px) {
             const float worldX = TERRAIN_MIN_X + (static_cast<float>(px)/(width-1))*spanX;
             const float noise = SurfaceNoise(worldX, worldZ);
-            Color base;
-            Color soil;
+            Color fallbackBase;
+            Color fallbackSoil;
+            const Image* material = nullptr;
             switch (GetBiome(worldX)) {
                 case Biome::Emerald:
-                    base = Color{78, 100, 66, 255}; soil = Color{105, 91, 65, 255}; break;
+                    fallbackBase = Color{78, 100, 66, 255};
+                    fallbackSoil = Color{105, 91, 65, 255};
+                    material = &grass;
+                    break;
                 case Biome::Dune:
-                    base = Color{159, 137, 96, 255}; soil = Color{128, 105, 70, 255}; break;
+                    fallbackBase = Color{159, 137, 96, 255};
+                    fallbackSoil = Color{128, 105, 70, 255};
+                    material = &sand;
+                    break;
                 case Biome::Frost:
-                    base = Color{126, 146, 148, 255}; soil = Color{105, 111, 105, 255}; break;
+                    fallbackBase = Color{126, 146, 148, 255};
+                    fallbackSoil = Color{105, 111, 105, 255};
+                    material = &snow;
+                    break;
                 default:
-                    base = Color{91, 70, 64, 255}; soil = Color{113, 74, 57, 255}; break;
+                    fallbackBase = Color{91, 70, 64, 255};
+                    fallbackSoil = Color{113, 74, 57, 255};
+                    material = &rock;
+                    break;
             }
-            const float brightness = 0.74f + noise*0.56f;
-            Color color = Color{
-                static_cast<unsigned char>(ClampF(base.r*brightness, 0, 255)),
-                static_cast<unsigned char>(ClampF(base.g*brightness, 0, 255)),
-                static_cast<unsigned char>(ClampF(base.b*brightness, 0, 255)), 255
-            };
+
+            // Repeat photographed surface materials at world scale, rather
+            // than stretching a single coarse procedural colour over a biome.
+            Color color = SampleTiledAlbedo(*material, worldX/4.3f, worldZ/4.3f, fallbackBase);
+            if (GetBiome(worldX) == Biome::Ember)
+                color = BlendColor(color, Color{128, 67, 56, 255}, 0.20f);
+
+            // Subtle broad variation keeps the material grounded without the
+            // over-saturated, noisy look of the previous generated texture.
+            const float brightness = 0.91f + (noise-0.5f)*0.34f;
+            color = ModulateColor(color, brightness);
+
             const float trailCenter = 1.15f*std::sin(worldX*0.034f) + 0.45f*std::sin(worldX*0.081f);
             const float trailDistance = std::fabs(worldZ - trailCenter);
-            const float trail = 0.88f*(1.0f - ClampF((trailDistance - 1.35f)/2.2f, 0.0f, 1.0f));
-            color = BlendColor(color, soil, trail);
-            const float rockNoise = 0.5f + 0.5f*std::sin(worldX*0.18f + std::sin(worldZ*0.21f))*std::cos(worldZ*0.16f-worldX*0.035f);
-            if ((GetBiome(worldX) == Biome::Frost || GetBiome(worldX) == Biome::Ember) && rockNoise > 0.81f)
-                color = BlendColor(color, Color{76, 77, 76, 255}, (rockNoise-0.81f)*1.65f);
-            const float grit = (noise - 0.5f)*20.0f;
+            const float trail = 0.96f*(1.0f - ClampF((trailDistance - 0.90f)/1.70f, 0.0f, 1.0f));
+            const Color soilColor = SampleTiledAlbedo(dirt, worldX/3.1f, worldZ/3.1f, fallbackSoil);
+            color = BlendColor(color, soilColor, trail);
+
+            const float grit = (noise - 0.5f)*10.0f;
             color.r = static_cast<unsigned char>(ClampF(color.r + grit, 0, 255));
-            color.g = static_cast<unsigned char>(ClampF(color.g + grit*0.9f, 0, 255));
-            color.b = static_cast<unsigned char>(ClampF(color.b + grit*0.8f, 0, 255));
+            color.g = static_cast<unsigned char>(ClampF(color.g + grit*0.92f, 0, 255));
+            color.b = static_cast<unsigned char>(ClampF(color.b + grit*0.84f, 0, 255));
             pixels[py*width + px] = color;
         }
     }
+
+    if (grass.data) UnloadImage(grass);
+    if (sand.data) UnloadImage(sand);
+    if (snow.data) UnloadImage(snow);
+    if (rock.data) UnloadImage(rock);
+    if (dirt.data) UnloadImage(dirt);
     return image;
 }
 
@@ -350,6 +456,7 @@ void LoadProceduralTerrain() {
             terrainModel.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = terrainTexture;
             terrainModel.materials[0].maps[MATERIAL_MAP_ALBEDO].color = WHITE;
         }
+        GenTextureMipmaps(&terrainTexture);
         SetTextureFilter(terrainTexture, TEXTURE_FILTER_TRILINEAR);
     }
     fallbackRockModel = LoadModelFromMesh(GenMeshSphere(1.0f, 9, 7));
@@ -562,25 +669,25 @@ void MakeWorld() {
         int kind = kindRoll < 50 ? 0 : (kindRoll < 76 ? 1 : (kindRoll < 88 ? 2 : 4));
         if (x > 48 && x < 112 && kind == 0) kind = 1;
         if (x > 112 && x < 174 && kind == 0) kind = 3;
-        props.push_back({ V3(x, TerrainHeightAt(x, z), z), scale, kind, GetRandomValue(0, 3) });
+        props.push_back({ V3(x, TerrainSurfaceHeightAt(x, z), z), scale, kind, GetRandomValue(0, 3) });
     }
     for (int i = 0; i < 13; ++i) {
         const float x = static_cast<float>(GetRandomValue(-8, 228));
         const float z = static_cast<float>(GetRandomValue(-35, 35));
-        const float groundY = TerrainHeightAt(x, z);
+        const float groundY = TerrainSurfaceHeightAt(x, z);
         monsters.push_back({ V3(x, groundY, z), V3(x, groundY, z),
                              48.0f, 48.0f, 1.7f + GetRandomValue(0, 12)/10.0f,
                              static_cast<float>(GetRandomValue(3, 7))/2.0f, 0.0f, true, i%4 });
     }
     for (int i=0; i<BOSS_COUNT; ++i) {
-        bosses[i].position.y = TerrainHeightAt(bosses[i].position.x, bosses[i].position.z);
+        bosses[i].position.y = TerrainSurfaceHeightAt(bosses[i].position.x, bosses[i].position.z);
         bosses[i].health = bosses[i].maxHealth;
         bosses[i].alive = true;
         bosses[i].attackClock = 1.6f + i*0.35f;
         bosses[i].phase = 0.0f;
     }
     player = Player{};
-    player.position = V3(-16.0f, TerrainHeightAt(-16.0f, 0.0f), 0.0f);
+    player.position = V3(-16.0f, TerrainSurfaceHeightAt(-16.0f, 0.0f), 0.0f);
     currentBoss = 0;
     missionToast = "EXPLORE THE WILDS";
     missionToastClock = 4.5f;
@@ -783,6 +890,7 @@ void LoadOptionalNatureModels() {
     natureTree = LoadOptionalModelStem("Assets/3d/sketchfab_tree");
     if (natureTree.meshCount == 0) natureTree = LoadModelFromManifest("Assets/3d/sketchfab_tree_path.txt");
     treeModelReady = natureTree.meshCount > 0;
+    treeGroundOffset = treeModelReady ? ComputeModelGroundOffset(natureTree) : 0.0f;
 
     natureRock = LoadOptionalModelStem("Assets/3d/sketchfab_rock");
     if (natureRock.meshCount == 0) natureRock = LoadModelFromManifest("Assets/3d/sketchfab_rock_path.txt");
@@ -842,6 +950,7 @@ void UnloadOptionalNatureModels() {
     if (sketchfabMonsterReady) UnloadModel(sketchfabMonsterModel);
     if (sketchfabBossReady) UnloadModel(sketchfabBossModel);
     treeModelReady = false;
+    treeGroundOffset = 0.0f;
     rockModelReady = false;
     sketchfabHeroReady = false;
     sketchfabMonsterReady = false;
@@ -867,7 +976,7 @@ void DrawTree(const Prop& p) {
     const float s = p.scale;
     const float ground = p.position.y;
     if (treeModelReady) {
-        DrawModel(natureTree, V3(p.position.x, ground, p.position.z), 4.0f*s, WHITE);
+        DrawModel(natureTree, V3(p.position.x, ground + treeGroundOffset*4.0f*s, p.position.z), 4.0f*s, WHITE);
         return;
     }
     const Biome b = GetBiome(p.position.x);
@@ -956,7 +1065,7 @@ void DrawEnvironment() {
 
 void DrawPlayerModel() {
     const Vector3 p = player.position;
-    DrawCircle3D(V3(p.x, TerrainHeightAt(p.x, p.z)+0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
+    DrawCircle3D(V3(p.x, TerrainSurfaceHeightAt(p.x, p.z)+0.018f, p.z), 0.62f, V3(1.0f, 0.0f, 0.0f), 90.0f,
                  WithAlpha(Color{ 14, 22, 25, 255 }, 105));
     if (sketchfabHeroReady) {
         const int heroAnimation = ChooseCharacterAnimation(
@@ -976,25 +1085,29 @@ void DrawPlayerModel() {
     } else {
         const float step = std::sin(player.walkClock*10.5f) * 0.23f;
         const float bodyBob = player.grounded ? std::fabs(std::sin(player.walkClock*10.5f))*0.05f : 0.0f;
+        const float yaw = std::atan2(-player.facing.x, -player.facing.z) * RAD2DEG;
         Color armor = player.hurtFlash > 0.0f ? WHITE : Color{ 65, 109, 164, 255 };
         Color cloth = Color{ 32, 54, 89, 255 };
-        DrawCube(V3(p.x, p.y+1.10f+bodyBob, p.z), 0.56f, 0.78f, 0.36f, armor);
-        DrawCube(V3(p.x, p.y+0.64f+bodyBob, p.z-0.02f), 0.62f, 0.32f, 0.41f, cloth);
-        DrawCube(V3(p.x, p.y+1.08f+bodyBob, p.z+0.235f), 0.38f, 0.60f, 0.09f, Color{ 112, 47, 59, 255 });
-        DrawSphere(V3(p.x-0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
-        DrawSphere(V3(p.x+0.31f, p.y+1.38f+bodyBob, p.z), 0.19f, Color{ 104, 143, 190, 255 });
-        DrawSphere(V3(p.x, p.y+1.14f+bodyBob, p.z-0.205f), 0.09f, C_GOLD);
-        DrawSphere(V3(p.x, p.y+1.75f+bodyBob, p.z), 0.25f, Color{ 226, 188, 151, 255 });
-        DrawCylinder(V3(p.x, p.y+2.00f+bodyBob, p.z), 0.15f, 0.22f, 0.12f, 7, C_GOLD);
-        DrawCube(V3(p.x, p.y+1.78f+bodyBob, p.z-0.215f), 0.26f, 0.075f, 0.045f, C_CYAN);
-        const Vector3 leftHip = V3(p.x-0.18f, p.y+0.58f, p.z);
-        const Vector3 rightHip = V3(p.x+0.18f, p.y+0.58f, p.z);
-        DrawCylinderEx(leftHip, V3(p.x-0.18f+step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
-        DrawCylinderEx(rightHip, V3(p.x+0.18f-step, p.y+0.10f, p.z), 0.105f, 0.08f, 6, Color{ 49, 65, 83, 255 });
-        DrawCylinderEx(V3(p.x-0.32f, p.y+1.36f, p.z), V3(p.x-0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
-        DrawCylinderEx(V3(p.x+0.32f, p.y+1.36f, p.z), V3(p.x+0.42f, p.y+0.92f, p.z-0.04f), 0.095f, 0.07f, 6, armor);
-        const Vector3 hand = V3(p.x+0.42f, p.y+0.94f, p.z-0.06f);
-        Vector3 swordTip = V3(hand.x+player.facing.x*0.95f, hand.y+0.28f, hand.z+player.facing.z*0.95f);
+
+        // Rotate the full fallback warrior around the feet, not the camera.
+        rlPushMatrix();
+        rlTranslatef(p.x, p.y, p.z);
+        rlRotatef(yaw, 0.0f, 1.0f, 0.0f);
+        DrawCube(V3(0.0f, 1.10f+bodyBob, 0.0f), 0.56f, 0.78f, 0.36f, armor);
+        DrawCube(V3(0.0f, 0.64f+bodyBob, -0.02f), 0.62f, 0.32f, 0.41f, cloth);
+        DrawCube(V3(0.0f, 1.08f+bodyBob, 0.235f), 0.38f, 0.60f, 0.09f, Color{112, 47, 59, 255});
+        DrawSphere(V3(-0.31f, 1.38f+bodyBob, 0.0f), 0.19f, Color{104, 143, 190, 255});
+        DrawSphere(V3(0.31f, 1.38f+bodyBob, 0.0f), 0.19f, Color{104, 143, 190, 255});
+        DrawSphere(V3(0.0f, 1.14f+bodyBob, -0.205f), 0.09f, C_GOLD);
+        DrawSphere(V3(0.0f, 1.75f+bodyBob, 0.0f), 0.25f, Color{226, 188, 151, 255});
+        DrawCylinder(V3(0.0f, 2.00f+bodyBob, 0.0f), 0.15f, 0.22f, 0.12f, 7, C_GOLD);
+        DrawCube(V3(0.0f, 1.78f+bodyBob, -0.215f), 0.26f, 0.075f, 0.045f, C_CYAN);
+        DrawCylinderEx(V3(-0.18f, 0.58f, 0.0f), V3(-0.18f+step, 0.10f, -0.02f), 0.105f, 0.08f, 6, Color{49, 65, 83, 255});
+        DrawCylinderEx(V3(0.18f, 0.58f, 0.0f), V3(0.18f-step, 0.10f, -0.02f), 0.105f, 0.08f, 6, Color{49, 65, 83, 255});
+        DrawCylinderEx(V3(-0.32f, 1.36f, 0.0f), V3(-0.42f, 0.92f, -0.04f), 0.095f, 0.07f, 6, armor);
+        DrawCylinderEx(V3(0.32f, 1.36f, 0.0f), V3(0.42f, 0.92f, -0.04f), 0.095f, 0.07f, 6, armor);
+        const Vector3 hand = V3(0.42f, 0.94f, -0.06f);
+        Vector3 swordTip = V3(hand.x+0.02f, hand.y+0.28f, hand.z-0.95f);
         if (player.attackClock > 0.0f) {
             const float swing = (0.5f-player.attackClock)*3.2f;
             swordTip.x += std::sin(swing*PI)*0.5f;
@@ -1003,8 +1116,8 @@ void DrawPlayerModel() {
         }
         DrawCylinderEx(hand, swordTip, 0.055f, 0.018f, 6, C_GOLD);
         DrawCylinderEx(V3(hand.x, hand.y-0.12f, hand.z), V3(hand.x, hand.y+0.12f, hand.z),
-                       0.07f, 0.07f, 6, Color{ 100, 63, 42, 255 });
-    }
+                       0.07f, 0.07f, 6, Color{100, 63, 42, 255});
+        rlPopMatrix();
     if (player.attackClock > 0.0f) {
         DrawCylinderEx(V3(p.x+player.facing.x*0.55f, p.y+1.0f, p.z+player.facing.z*0.55f),
                        V3(p.x+player.facing.x*2.5f, p.y+1.0f, p.z+player.facing.z*2.5f),
@@ -1297,7 +1410,7 @@ void UpdatePlayer(float dt) {
     }
     player.velocity.y -= 20.0f*dt;
     player.position.y += player.velocity.y*dt;
-    const float groundY = TerrainHeightAt(player.position.x, player.position.z);
+    const float groundY = TerrainSurfaceHeightAt(player.position.x, player.position.z);
     if (player.position.y <= groundY) {
         if (!player.grounded && player.velocity.y < -5.0f)
             SpawnBurst(V3(player.position.x, groundY+0.12f, player.position.z), Color{ 190, 194, 161, 255 }, 8, 1.4f);
@@ -1359,7 +1472,7 @@ void UpdateEnemies(float dt) {
         }
         m.position.x = ClampF(m.position.x, WORLD_MIN_X, WORLD_MAX_X);
         m.position.z = ClampF(m.position.z, -WORLD_HALF_Z+1.0f, WORLD_HALF_Z-1.0f);
-        m.position.y = TerrainHeightAt(m.position.x, m.position.z);
+        m.position.y = TerrainSurfaceHeightAt(m.position.x, m.position.z);
         if (distance < 1.8f && m.attackClock <= 0.0f) {
             m.attackClock = 1.55f;
             AddDamageToPlayer(8.0f);
@@ -1379,7 +1492,7 @@ void UpdateEnemies(float dt) {
             b.position.x += dir.x*b.speed*dt;
             b.position.z += dir.z*b.speed*dt;
         }
-        b.position.y = TerrainHeightAt(b.position.x, b.position.z);
+        b.position.y = TerrainSurfaceHeightAt(b.position.x, b.position.z);
         if (distance < 3.4f && b.attackClock <= 0.0f) {
             b.attackClock = 2.1f + i*0.18f;
             AddDamageToPlayer(14.0f + i*3.0f);
@@ -1589,7 +1702,7 @@ int main() {
             if (player.rebirthClock <= 0.0f) {
                 player.health = player.maxHealth*0.72f;
                 player.position.x = ClampF(player.position.x-6.0f,WORLD_MIN_X,WORLD_MAX_X);
-                player.position.y = TerrainHeightAt(player.position.x, player.position.z);
+                player.position.y = TerrainSurfaceHeightAt(player.position.x, player.position.z);
                 player.velocity=V3(0,0,0);
                 player.invulnerable=1.7f;
                 screen=Screen::Playing;
