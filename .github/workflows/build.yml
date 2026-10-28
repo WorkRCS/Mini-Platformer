@@ -1,4 +1,4 @@
-name: Build desktop game
+name: Build Unity native gameplay core
 
 on:
   push:
@@ -7,51 +7,54 @@ on:
     branches: [main]
 
 jobs:
-  windows-ucrt64:
-    runs-on: windows-latest
+  native-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch optional CC0 environment and sound assets
+      - name: Configure C++ core
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build shared native plug-in and tests
+        run: cmake --build build --config Release
+
+      - name: Run C++ gameplay tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Validate Unity project scaffold
         shell: pwsh
-        continue-on-error: true
-        run: ./scripts/fetch-openworld-assets.ps1
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-raylib
-
-      - name: Configure
-        shell: msys2 {0}
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        shell: msys2 {0}
-        run: cmake --build build --verbose
-
-      - name: Package Windows PC build
-        shell: msys2 {0}
         run: |
-          mkdir -p dist
-          cp build/TinyTrails.exe dist/
-          if [ -d build/assets ]; then cp -a build/assets dist/assets; fi
-          # Bundle MSYS2 runtime DLLs resolved by the built executable.
-          ldd build/TinyTrails.exe | while IFS= read -r line; do
-            dep="$(printf '%s\n' "$line" | sed -nE 's/.*=> (\/[^ ]+).*/\1/p')"
-            if [[ "$dep" == /ucrt64/bin/* && -f "$dep" ]]; then cp -u "$dep" dist/; fi
-          done
-          find dist -maxdepth 1 -name '*.dll' -print
+          $required = @(
+            "Assets/Scripts/Runtime/WildboundGame.cs",
+            "Assets/Scripts/Runtime/WildboundNative.cs",
+            "Assets/Editor/WildboundProjectSetup.cs",
+            "Assets/Editor/SketchfabAssetManagerWindow.cs",
+            "Packages/manifest.json",
+            "ProjectSettings/ProjectVersion.txt"
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path $path)) { throw "Missing Unity project file: $path" }
+          }
+          Write-Host "Unity project scaffold is present."
 
-      - name: Upload Windows PC game
+      - name: Package Windows native plug-in
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $plugin = Get-ChildItem build -Recurse -Filter WildboundCore.dll | Select-Object -First 1
+          if (!$plugin) { throw "WildboundCore.dll not found after native build." }
+          New-Item -ItemType Directory -Force -Path dist/Assets/Plugins/x86_64 | Out-Null
+          Copy-Item $plugin.FullName dist/Assets/Plugins/x86_64/WildboundCore.dll
+          Copy-Item NativeCore/README.md dist/README-native-core.txt
+
+      - name: Upload Windows native plug-in
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: Wildbound-PC-Windows
+          name: Wildbound-Unity-NativeCore-Windows-x64
           path: dist/
           if-no-files-found: error
