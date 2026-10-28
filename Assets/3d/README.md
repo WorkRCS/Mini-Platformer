@@ -1,6 +1,6 @@
 # Sketchfab-only 3D models and terrain materials
 
-The native raylib game builds a real indexed-triangle terrain mesh, samples actors and props against the exact visible triangles, and bakes material colour into a 1536x512 terrain albedo texture.
+The native raylib game builds a real indexed-triangle terrain mesh, samples actors and props against the exact visible triangles, and bakes material colour into a 3072x1536 terrain albedo texture.
 
 At CMake configure time, the desktop build optionally downloads 1K diffuse maps from Poly Haven under its CC0 license:
 
