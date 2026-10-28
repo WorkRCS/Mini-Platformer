@@ -1,78 +1,67 @@
-# Wildbound: Boss Hunter — Unity + C++ cross-platform game
+# Wildbound: Boss Hunter — VS Code / C++ 3D game
 
-**Unity is now the primary development and test environment.** Clone this repository and open the repository root in Unity Hub. The Unity Editor creates a starter scene on first open; press **Play** to test the prototype, then build Windows desktop or Android from the **Wildbound** menu.
+**For the first visual test, use VS Code and the raylib C++ desktop game.** Unity project files remain as an optional scaffold, but the root CMake target and VS Code tasks now build and launch the native 3D game from `src/adventure3d.cpp`.
 
-The gameplay rules (movement, jumping/gravity, attack cooldowns and damage, ability damage, monster chase AI, boss unlocks, health, kills and XP) live in a portable C++17 native core under `NativeCore/`. Unity is responsible for scene and rendering, models, animation playback, input, camera, VFX, audio and platform builds; C# scripts are the Unity/native plug-in bridge. Unity cannot directly run the old raylib desktop application as a Unity scene, so the previous raylib sources remain in `src/` only as legacy reference and are no longer the default build target.
+## 3D environment added
 
-## 1. Open in Unity
+- A real indexed triangle terrain mesh with rolling hills across four regions, not flat ground tiles.
+- A generated high-resolution surface texture with layered noise, grass/earth/sand/rock color variation, and a dirt trail blended into the terrain material.
+- Player movement, monsters, bosses, trees, rocks, crystals and altars now follow the sampled terrain height.
+- Tree shapes use layered tapered crowns; rocks use a low-poly 3D mesh instead of cubes.
+- Sketchfab GLB/glTF files can replace the hero, monster, boss, tree and rock fallback meshes.
+- VS Code tasks can configure, build, test, run and debug the C++ app. **Visual Studio is not required.**
 
-1. Install **Unity 6.3 LTS** in Unity Hub (the repository pins an initial version in `ProjectSettings/ProjectVersion.txt`). Include **Windows Build Support** and **Android Build Support** with Android SDK, NDK and OpenJDK if you plan to build APKs.
-2. Clone this repository.
-3. In Unity Hub select **Add / Open project** and choose the cloned repository's root folder — the folder that contains `Assets`, `Packages`, and `ProjectSettings`.
-4. Wait for package resolution and C# compilation. The editor setup script generates `Assets/Scenes/Wildbound.unity` and adds it to Build Settings automatically.
-5. Press **Play**. Until you build the native plug-in, Play Mode shows a managed preview. For the actual C++ gameplay simulation, build the native core using **Wildbound > Build Native C++ Core (Windows x64)** or run:
-   ```powershell
-   .\scripts\build-native-core.ps1
+This is a stylized game environment rather than photorealistic terrain, but the ground is a real 3D mesh with an albedo texture generated at runtime and actual changes in elevation. The starter scene is visible immediately without an external asset download. Imported Sketchfab characters and props can replace the fallback meshes when you add them.
+
+## 1. Open and run from VS Code (Windows)
+
+1. Install **VS Code** and the **C/C++** and **CMake Tools** extensions.
+2. Install **MSYS2 UCRT64**. In its UCRT64 terminal, install the C++ compiler, CMake, Ninja and raylib:
+   ```bash
+   pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-raylib
    ```
-   This requires CMake and a C++ compiler such as Visual Studio Build Tools. The DLL is created locally under `Assets/Plugins/x86_64/` and is intentionally not committed.
+3. Clone this repo and open the repository root in VS Code (File → Open Folder).
+4. Press `Ctrl+Shift+P` → **Tasks: Run Task** → **Run Wildbound 3D**. This configures, builds and launches the game. You can also use **Run and Debug** and select **Wildbound 3D (raylib / MSYS2 UCRT64)**.
+5. The executable is `build/TinyTrails.exe`. The task sets the MSYS2 DLL path so raylib can launch from VS Code.
 
-## 2. Add every 3D model from Sketchfab in Unity
+If MSYS2 is installed somewhere other than `C:\msys64`, adjust the paths in `.vscode/tasks.json`, `.vscode/launch.json` and `.vscode/settings.json`.
 
-Sketchfab is the **only external 3D model provider configured for this project**. No Kenney, Gobkit, itch.io or other model-provider downloads are part of the Unity workflow.
+## 2. Add real Sketchfab character and environment models
 
-1. In Unity open **Wildbound > Sketchfab Asset Importer** and click a category search (Characters, Monsters, Environment, Animations or VFX).
-2. Sign in to Sketchfab in your browser. Download a model only if that page says it is downloadable and its license permits your use. Keep the creator and license credit.
-3. Unzip the download and copy the model and its textures into the appropriate folder under `Assets/Sketchfab/`. FBX uses Unity's built-in importer; GLB/glTF is handled by the pinned `com.unity.cloud.gltfast` package.
-4. Create a prefab if necessary, select it in the Project window, then use **Wildbound > Sketchfab Asset Importer** to register the prefab's role and record model URL, author and license. References are stored in `Assets/Resources/WildboundAssetCatalog.asset`.
-5. Assign imported animation clips to `WildboundCharacterVisual` (Idle, Walk, Run, Jump, Attack, Hit, Death), or assign an Animator Controller with parameters named `Speed`, `Grounded`, `IsRunning`, `Attack`, `Jump`, `Hit` and `Dead`.
+Open [Sketchfab](https://sketchfab.com/), sign in, and download the chosen model from its model page if download is enabled. Keep the model textures with the model, then copy a GLB into `Assets/3d/` using one of the names documented in [Assets/3d/README.md](Assets/3d/README.md). Run **Build Wildbound** again. The loader prefers those Sketchfab GLBs over fallback character/prop meshes.
 
-The current starter scene generates a playable landscape and visible placeholder characters so the project is testable before you add models. Replace the player, monster, boss, tree, rock and environment prefab slots in the catalog with your Sketchfab imports. You can assign a ParticleSystem prefab to the ability VFX slot and locally licensed sound clips to the SFX/BGM slots as well. The editor does not scrape Sketchfab or bypass its login/download flow; model downloads and license selection remain under your account.
+The current raylib model loader supports GLB/glTF, not FBX. Use Sketchfab's downloadable GLB/glTF format for this native C++ path. Sketchfab downloads require account authentication and model licenses/attribution must be respected. See [Sketchfab's Download API](https://sketchfab.com/developers/download-api/downloading-models) and [model license guidelines](https://sketchfab.com/developers/download-api/guidelines).
 
-Sketchfab notes: downloading requires authentication; Creative Commons model use typically requires attribution to the author and Sketchfab. See [Sketchfab Download API](https://sketchfab.com/developers/download-api/downloading-models) and [license/attribution guidelines](https://sketchfab.com/developers/download-api/guidelines).
+## 3. Build, test and run manually
 
-## 3. Build for desktop and mobile
+From the MSYS2 UCRT64 terminal at the repository root:
 
-### Windows desktop
-
-From Unity, run **Wildbound > Build Native C++ Core (Windows x64)** first, then **Wildbound > Build > Windows 64-bit**. Output goes to `Builds/Windows/Wildbound.exe`.
-
-### Android ARM64
-
-Install Android Build Support through Unity Hub. Build the C++ native plug-in first using **Wildbound > Build Native C++ Core (Android ARM64)**. If the automatic NDK path is not found, run PowerShell:
-```powershell
-.\scripts\build-native-core.ps1 -Android -NdkPath "C:\Path\To\Unity\Editor\Data\PlaybackEngines\AndroidPlayer\NDK"
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build -C Release --output-on-failure
+./build/TinyTrails.exe
 ```
-Then select **Wildbound > Build > Android APK (ARM64)**. The APK goes to `Builds/Android/Wildbound.apk`.
 
-### Keyboard controls
+The GitHub Actions workflow compiles and packages a Windows first-test build and runs the portable C++ gameplay-core tests. CI compiles the app but does not launch the graphical window, so the local VS Code run is the visual test.
+
+## Keyboard controls
 
 | Action | Control |
 |---|---|
-| Move | W / A / S / D or arrow keys |
+| Move | W / A / S / D |
 | Run | Hold Shift |
 | Jump | Space |
-| Attack | Left mouse button or J |
+| Attack | Left click or J |
 | Ability | K |
 | Camera orbit | Hold right mouse button and drag |
-
-The Android starter controller includes touch-zone controls; refine their UI positions for your target devices in Unity.
-
-## 4. C++ core build and CI
-
-From the repository root:
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
-```
-
-GitHub Actions compiles and tests the portable C++ core on Windows and Linux. It does not run the Unity Editor or produce a Unity player in CI because a licensed Unity Editor and target modules are installed via Unity Hub locally. Native plug-in binaries are built for each target machine/platform and are excluded from Git.
+| Camera zoom | Mouse wheel |
+| Pause | Tab / P / Escape |
 
 ## Repository layout
 
-- `Assets/` — Unity runtime scripts, Sketchfab import folders, catalog and editor tools
-- `NativeCore/` — portable C++ gameplay simulation and unit tests, no raylib dependency
-- `scripts/build-native-core.ps1` — builds/copies Windows DLL or Android ARM64 SO
-- `Packages/manifest.json` — Unity packages including glTFast
-- `ProjectSettings/` — Unity project version and build scene settings
-- `src/`, `android/`, old root assets — legacy raylib/Android project files kept for reference, not used by Unity player builds
+- `src/adventure3d.cpp` — raylib 3D game and procedural terrain
+- `Assets/3d/` — optional Sketchfab models and textures
+- `NativeCore/` — portable C++ gameplay-core library and unit tests
+- `.vscode/` — build/run/debug tasks for VS Code
+- `Assets/Scripts/`, `Assets/Editor/`, `Packages/`, `ProjectSettings/` — optional Unity editor scaffold
