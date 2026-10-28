@@ -46,7 +46,11 @@ else()
         target_link_libraries(TinyTrails PRIVATE winmm)
     endif()
 
-    if(WIN32 AND MINGW AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/windows_icon.rc.in")
+    # The old icon resource referenced the deleted lowercase assets/ folder.
+    # Only compile a Windows resource when the matching icon still exists.
+    if(WIN32 AND MINGW AND
+       EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Assets/app_icon.ico" AND
+       EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/windows_icon.rc.in")
         configure_file(
             "${CMAKE_CURRENT_SOURCE_DIR}/src/windows_icon.rc.in"
             "${CMAKE_CURRENT_BINARY_DIR}/windows_icon.rc"
